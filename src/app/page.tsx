@@ -30,6 +30,7 @@ export default function Home() {
         <FeatureCard title="POS" href="/pos" description="Sell items and record sales." />
         <FeatureCard title="Accounting" href="/accounting" description="View sales ledger and totals." />
         <FeatureCard title="Time" href="/time" description="Clock in/out and view your logs." />
+        <FeatureCard title="Time Kiosk" href="/kiosk" description="Clock in/out with employee code (no login)." />
       </div>
     </div>
   );
