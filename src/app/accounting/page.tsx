@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { RequirePermission } from "@/components/Guard";
 import {
   getSales,
@@ -10,9 +11,11 @@ import {
   getExpenses,
   addExpense,
   type Expense,
+  addAudit,
 } from "@/lib/storage";
 
 export default function AccountingPage() {
+  const { user } = useAuth();
   const [tab, setTab] = useState<"ledger" | "invoices" | "expenses" | "reports">("ledger");
 
   const [sales, setSales] = useState<Sale[]>([]);
@@ -40,6 +43,10 @@ export default function AccountingPage() {
   const expensesTotal = useMemo(() => expenses.reduce((s, x) => s + x.amount, 0), [expenses]);
   const net = useMemo(() => salesTotal + invoicesPaidTotal - expensesTotal, [salesTotal, invoicesPaidTotal, expensesTotal]);
 
+  const salesCsv = useMemo(() => salesToCSV(sales), [sales]);
+  const invoicesCsv = useMemo(() => invoicesToCSV(invoices), [invoices]);
+  const expensesCsv = useMemo(() => expensesToCSV(expenses), [expenses]);
+
   const submitInvoice = (e: React.FormEvent) => {
     e.preventDefault();
     const amt = parseFloat(invAmount);
@@ -52,6 +59,7 @@ export default function AccountingPage() {
       status: invStatus,
     };
     addInvoice(inv);
+    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "invoice:add", details: `${inv.customer} ${inv.status} ${inv.amount.toFixed(2)}` });
     setInvoices((cur) => [inv, ...cur]);
     setInvCustomer("");
     setInvAmount("");
@@ -71,6 +79,7 @@ export default function AccountingPage() {
       amount: parseFloat(amt.toFixed(2)),
     };
     addExpense(exp);
+    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "expense:add", details: `${exp.category} ${exp.amount.toFixed(2)}` });
     setExpenses((cur) => [exp, ...cur]);
     setExpNote("");
     setExpAmount("");
@@ -90,7 +99,10 @@ export default function AccountingPage() {
 
         {tab === "ledger" && (
           <section>
-            <h2 className="text-xl font-semibold mb-3">Sales Ledger</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-xl font-semibold">Sales Ledger</h2>
+              <a className="px-3 py-1 rounded border text-sm" href={`data:text/csv;charset=utf-8,${encodeURIComponent(salesCsv)}`} download={`sales-${new Date().toISOString().slice(0,10)}.csv`}>Export CSV</a>
+            </div>
             {sales.length === 0 ? (
               <p className="opacity-70">No sales recorded yet.</p>
             ) : (
@@ -132,7 +144,10 @@ export default function AccountingPage() {
 
         {tab === "invoices" && (
           <section className="space-y-4">
-            <h2 className="text-xl font-semibold">Invoices</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Invoices</h2>
+              <a className="px-3 py-1 rounded border text-sm" href={`data:text/csv;charset=utf-8,${encodeURIComponent(invoicesCsv)}`} download={`invoices-${new Date().toISOString().slice(0,10)}.csv`}>Export CSV</a>
+            </div>
             <form onSubmit={submitInvoice} className="grid sm:grid-cols-4 gap-2 p-3 border rounded">
               <input value={invCustomer} onChange={(e) => setInvCustomer(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" placeholder="Customer" />
               <input value={invAmount} onChange={(e) => setInvAmount(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" placeholder="Amount" inputMode="decimal" />
@@ -180,7 +195,10 @@ export default function AccountingPage() {
 
         {tab === "expenses" && (
           <section className="space-y-4">
-            <h2 className="text-xl font-semibold">Expenses</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Expenses</h2>
+              <a className="px-3 py-1 rounded border text-sm" href={`data:text/csv;charset=utf-8,${encodeURIComponent(expensesCsv)}`} download={`expenses-${new Date().toISOString().slice(0,10)}.csv`}>Export CSV</a>
+            </div>
             <form onSubmit={submitExpense} className="grid sm:grid-cols-5 gap-2 p-3 border rounded">
               <input value={expCategory} onChange={(e) => setExpCategory(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" placeholder="Category" />
               <input value={expNote} onChange={(e) => setExpNote(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-2" placeholder="Note (optional)" />
@@ -238,6 +256,53 @@ export default function AccountingPage() {
       </div>
     </RequirePermission>
   );
+}
+
+function salesToCSV(rows: Sale[]): string {
+  const head = ["at","cashier","items","subtotal","discount","tax","total"].join(",");
+  const body = rows.map(s => {
+    const subtotal = s.items.reduce((sum, it) => sum + it.price * it.qty, 0);
+    const itemsStr = s.items.map(it => `${it.name} x${it.qty} @ ${it.price.toFixed(2)}`).join("; ");
+    const arr = [
+      new Date(s.at).toISOString(),
+      safe(s.cashier.name),
+      safe(itemsStr),
+      subtotal.toFixed(2),
+      (s.discountAmount || 0).toFixed(2),
+      (s.taxAmount || 0).toFixed(2),
+      s.total.toFixed(2),
+    ];
+    return arr.join(",");
+  }).join("\n");
+  return head + "\n" + body;
+}
+
+function invoicesToCSV(rows: Invoice[]): string {
+  const head = ["at","customer","status","amount"].join(",");
+  const body = rows.map(r => [
+    new Date(r.at).toISOString(),
+    safe(r.customer),
+    r.status,
+    r.amount.toFixed(2)
+  ].join(",")).join("\n");
+  return head + "\n" + body;
+}
+
+function expensesToCSV(rows: Expense[]): string {
+  const head = ["at","category","note","amount"].join(",");
+  const body = rows.map(r => [
+    new Date(r.at).toISOString(),
+    safe(r.category),
+    safe(r.note || ""),
+    r.amount.toFixed(2)
+  ].join(",")).join("\n");
+  return head + "\n" + body;
+}
+
+function safe(s: string): string {
+  const needsQuote = /[",\n]/.test(s);
+  let v = s.replaceAll('"', '""');
+  return needsQuote ? `"${v}"` : v;
 }
 
 function TabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {

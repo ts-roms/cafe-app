@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { RequirePermission } from "@/components/Guard";
 import { useAuth } from "@/context/AuthContext";
-import { getTimeLogs, saveTimeLogs, getShifts, saveShifts, addShift, type TimeLog, type Shift } from "@/lib/storage";
+import { getTimeLogs, saveTimeLogs, getShifts, saveShifts, addShift, addAudit, type TimeLog, type Shift } from "@/lib/storage";
 
 function ymd(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -19,7 +19,7 @@ export default function TimePage() {
   const { user } = useAuth();
   const [logs, setLogs] = useState<TimeLog[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
-  const [tab, setTab] = useState<"logs" | "attendance" | "shifts">("logs");
+  const [tab, setTab] = useState<"logs" | "attendance" | "shifts" | "team">("logs");
 
   // shift form (admin)
   const [empName, setEmpName] = useState("");
@@ -34,6 +34,15 @@ export default function TimePage() {
 
   const myOpenLog = useMemo(() => logs.find((l) => l.userId === user?.id && !l.clockOut), [logs, user?.id]);
   const myLogs = useMemo(() => logs.filter((l) => l.userId === user?.id), [logs, user?.id]);
+
+  const isAdmin = user?.role === "admin";
+  const isManager = user?.role === "manager";
+  const isManagerOrAdmin = isAdmin || isManager;
+
+  const teamLogs = useMemo(() => {
+    // Show only staff and cashier logs; ignore entries without role for clarity
+    return logs.filter(l => l.userRole === "cashier" || l.userRole === "staff");
+  }, [logs]);
 
   const todayShiftsForMe = useMemo(() => {
     if (!user) return [] as Shift[];
@@ -62,11 +71,13 @@ export default function TimePage() {
       id: crypto.randomUUID(),
       userId: user.id,
       userName: user.name,
+      userRole: user.role,
       clockIn: new Date().toISOString(),
     };
     const updated = [entry, ...logs];
     setLogs(updated);
     saveTimeLogs(updated);
+    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: { id: user.id, name: user.name }, action: "time:in", details: "Clock in" });
   };
 
   const clockOut = () => {
@@ -75,6 +86,7 @@ export default function TimePage() {
     const updated = logs.map((l) => (l.id === myOpenLog.id ? { ...l, clockOut: new Date().toISOString() } : l));
     setLogs(updated);
     saveTimeLogs(updated);
+    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: { id: user.id, name: user.name }, action: "time:out", details: "Clock out" });
   };
 
   // Attendance for last 14 days (simple: based on clockIn date)
@@ -91,8 +103,6 @@ export default function TimePage() {
     return days;
   }, [myLogs]);
 
-  const isAdmin = user?.role === "admin";
-
   const submitShift = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin) return;
@@ -106,6 +116,7 @@ export default function TimePage() {
     const next = [s, ...shifts];
     setShifts(next);
     saveShifts(next);
+    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: { id: user.id, name: user.name }, action: "shift:add", details: `${s.userName} ${s.date} ${s.start}-${s.end}` });
     setEmpName("");
   };
 
@@ -124,6 +135,9 @@ export default function TimePage() {
           <button onClick={() => setTab("logs")} className={`px-3 py-1 rounded border ${tab === "logs" ? "bg-foreground text-background" : ""}`}>My Logs</button>
           <button onClick={() => setTab("attendance")} className={`px-3 py-1 rounded border ${tab === "attendance" ? "bg-foreground text-background" : ""}`}>Attendance</button>
           <button onClick={() => setTab("shifts")} className={`px-3 py-1 rounded border ${tab === "shifts" ? "bg-foreground text-background" : ""}`}>Shifts</button>
+          {isManagerOrAdmin && (
+            <button onClick={() => setTab("team")} className={`px-3 py-1 rounded border ${tab === "team" ? "bg-foreground text-background" : ""}`}>Team Logs</button>
+          )}
         </div>
 
         {/* Clock controls always visible */}
@@ -212,6 +226,47 @@ export default function TimePage() {
                         <td className="p-2 border">{s.end}</td>
                       </tr>
                     ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
+
+        {tab === "team" && isManagerOrAdmin && (
+          <section>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xl font-semibold">Team Logs (Staff & Cashiers)</h2>
+            </div>
+            {teamLogs.length === 0 ? (
+              <p className="opacity-70">No team logs to show.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full border text-sm">
+                  <thead className="bg-black/5 dark:bg-white/10">
+                    <tr>
+                      <th className="text-left p-2 border">Name</th>
+                      <th className="text-left p-2 border">Role</th>
+                      <th className="text-left p-2 border">In</th>
+                      <th className="text-left p-2 border">Out</th>
+                      <th className="text-right p-2 border">Hours</th>
+                      <th className="text-left p-2 border">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {teamLogs.map((l) => {
+                      const hrs = hoursBetween(l.clockIn, l.clockOut);
+                      return (
+                        <tr key={l.id} className="odd:bg-black/0 even:bg-black/5 dark:even:bg-white/5">
+                          <td className="p-2 border">{l.userName}</td>
+                          <td className="p-2 border">{l.userRole || ""}</td>
+                          <td className="p-2 border whitespace-nowrap">{new Date(l.clockIn).toLocaleString()}</td>
+                          <td className="p-2 border whitespace-nowrap">{l.clockOut ? new Date(l.clockOut).toLocaleString() : "—"}</td>
+                          <td className="p-2 border text-right">{hrs.toFixed(2)}</td>
+                          <td className="p-2 border">{l.clockOut ? "Closed" : "Open"}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

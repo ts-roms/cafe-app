@@ -5,6 +5,8 @@ const INVOICE_KEY = "cafe_invoices";
 const EXPENSE_KEY = "cafe_expenses";
 const INVENTORY_KEY = "cafe_inventory";
 const CUSTOMERS_KEY = "cafe_customers";
+const SETTINGS_KEY = "cafe_settings";
+const AUDIT_KEY = "cafe_audit";
 
 export type SaleItem = { id: string; name: string; price: number; qty: number };
 export type Customer = { id: string; name: string; phone?: string };
@@ -13,6 +15,12 @@ export type Sale = {
   at: string; // ISO date
   cashier: { id: string; name: string };
   items: SaleItem[];
+  // Order-level adjustments
+  taxRate?: number; // percent (e.g., 12 for 12%)
+  taxAmount?: number; // computed tax amount
+  discountAmount?: number; // absolute amount discount applied to subtotal before tax
+  paymentMethod?: "cash" | "card" | "other";
+  // Final amount charged (subtotal - discount + tax)
   total: number;
   receiptNo?: string;
   customer?: { id: string; name: string };
@@ -29,10 +37,13 @@ const DEFAULT_INVENTORY: InventoryItem[] = [
   { id: "cake", name: "Cake Slice", price: 3.25, stock: 20 },
 ];
 
+import type { Role } from "@/lib/rbac";
+
 export type TimeLog = {
   id: string;
   userId: string;
   userName: string;
+  userRole?: Role; // role at the time of logging (optional for backward compatibility)
   clockIn: string; // ISO
   clockOut?: string; // ISO
 };
@@ -207,4 +218,58 @@ export function addShift(shift: Shift) {
   const all = getShifts();
   all.unshift(shift);
   saveShifts(all);
+}
+
+// Settings helpers and types
+export type Settings = {
+  companyName: string;
+  currency: string; // e.g., USD
+  taxRate: number; // percent, e.g., 12 means 12%
+};
+
+const DEFAULT_SETTINGS: Settings = {
+  companyName: "My Cafe",
+  currency: "USD",
+  taxRate: 0,
+};
+
+export function getSettings(): Settings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    return raw ? (JSON.parse(raw) as Settings) : { ...DEFAULT_SETTINGS };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+export function saveSettings(s: Settings) {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+}
+
+// Audit log helpers and types
+export type AuditEntry = {
+  id: string;
+  at: string; // ISO
+  user?: { id: string; name: string };
+  action: string; // e.g., "sale:checkout", "invoice:add"
+  details?: string;
+};
+
+export function getAuditLogs(): AuditEntry[] {
+  try {
+    const raw = localStorage.getItem(AUDIT_KEY);
+    return raw ? (JSON.parse(raw) as AuditEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveAuditLogs(list: AuditEntry[]) {
+  localStorage.setItem(AUDIT_KEY, JSON.stringify(list));
+}
+
+export function addAudit(entry: AuditEntry) {
+  const all = getAuditLogs();
+  all.unshift(entry);
+  saveAuditLogs(all);
 }

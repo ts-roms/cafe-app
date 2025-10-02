@@ -11,6 +11,8 @@ import {
   adjustInventoryForSale,
   getSales,
   addOrGetCustomerByName,
+  getSettings,
+  addAudit,
 } from "@/lib/storage";
 
 export default function POSPage() {
@@ -19,10 +21,15 @@ export default function POSPage() {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [customerName, setCustomerName] = useState("");
   const [recent, setRecent] = useState<Sale[]>([]);
+  const [taxRate, setTaxRate] = useState<number>(0);
+  const [discount, setDiscount] = useState<string>("");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "other">("cash");
 
   useEffect(() => {
     setInventory(getInventory());
     setRecent(getSales().slice(0, 5));
+    const s = getSettings();
+    setTaxRate(typeof s.taxRate === "number" ? s.taxRate : 0);
   }, []);
 
   const items: SaleItem[] = useMemo(
@@ -36,7 +43,16 @@ export default function POSPage() {
     [cart, inventory]
   );
 
-  const total = useMemo(() => items.reduce((s, it) => s + it.price * it.qty, 0), [items]);
+  const subtotal = useMemo(() => items.reduce((s, it) => s + it.price * it.qty, 0), [items]);
+  const discountAmt = useMemo(() => {
+    const d = parseFloat(discount);
+    return isFinite(d) && d > 0 ? Math.min(d, subtotal) : 0;
+  }, [discount, subtotal]);
+  const taxAmount = useMemo(() => {
+    const base = Math.max(0, subtotal - discountAmt);
+    return parseFloat(((base * (taxRate || 0)) / 100).toFixed(2));
+  }, [subtotal, discountAmt, taxRate]);
+  const grandTotal = useMemo(() => parseFloat((Math.max(0, subtotal - discountAmt) + taxAmount).toFixed(2)), [subtotal, discountAmt, taxAmount]);
 
   const addToCart = (id: string) =>
     setCart((c) => {
@@ -75,12 +91,17 @@ export default function POSPage() {
       at: now.toISOString(),
       cashier: { id: user.id, name: user.name },
       items,
-      total: parseFloat(total.toFixed(2)),
+      taxRate,
+      taxAmount,
+      discountAmount: discountAmt,
+      paymentMethod,
+      total: grandTotal,
       receiptNo,
       customer: saleCustomer,
     };
 
     addSale(sale);
+    addAudit({ id: crypto.randomUUID(), at: now.toISOString(), user: { id: user.id, name: user.name }, action: "sale:checkout", details: `${receiptNo} ${saleCustomer?.name ? `for ${saleCustomer.name} ` : ""}- ${paymentMethod} - ${grandTotal.toFixed(2)}` });
     const updatedInv = adjustInventoryForSale(items);
     setInventory(updatedInv);
     setRecent((cur) => [sale, ...cur].slice(0, 5));
@@ -131,8 +152,36 @@ export default function POSPage() {
                 </div>
               ))}
               <div className="flex items-center justify-between border-t pt-2 mt-2">
-                <div className="font-semibold">Total</div>
-                <div className="font-semibold">${total.toFixed(2)}</div>
+                <div className="font-semibold">Subtotal</div>
+                <div className="font-semibold">${subtotal.toFixed(2)}</div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-sm mb-1">Discount (amount)</label>
+                  <input
+                    value={discount}
+                    onChange={(e) => setDiscount(e.target.value)}
+                    className="w-full border rounded px-3 py-2 bg-transparent"
+                    placeholder="0.00"
+                    inputMode="decimal"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm mb-1">Payment Method</label>
+                  <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as any)} className="w-full border rounded px-3 py-2 bg-transparent">
+                    <option value="cash">Cash</option>
+                    <option value="card">Card</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="text-sm opacity-80">Tax ({taxRate}%)</div>
+                <div className="text-sm">${taxAmount.toFixed(2)}</div>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="font-semibold">Grand Total</div>
+                <div className="font-semibold">${grandTotal.toFixed(2)}</div>
               </div>
               <div>
                 <label className="block text-sm mb-1">Customer Name (optional)</label>

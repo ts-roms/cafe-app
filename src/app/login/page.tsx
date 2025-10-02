@@ -28,6 +28,7 @@ export default function LoginPage() {
           <label className="block text-sm mb-1">Role</label>
           <select value={role} onChange={(e) => setRole(e.target.value as Role)} className="w-full border rounded px-3 py-2 bg-transparent">
             <option value="admin">Admin</option>
+            <option value="manager">Manager</option>
             <option value="cashier">Cashier</option>
             <option value="staff">Staff</option>
           </select>

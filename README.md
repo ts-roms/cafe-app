@@ -2,9 +2,10 @@
 
 A minimal Next.js app that demonstrates:
 - POS (Point of Sale)
-- Accounting (sales ledger, invoicing, expenses, and simple financial reports)
-- Time In/Out tracking
-- Role-Based Access Control (RBAC) with roles: admin, cashier, staff
+- Accounting (sales ledger, invoicing, expenses, and simple financial reports) with CSV export
+- Time In/Out tracking with audit logs and shift scheduling
+- Role-Based Access Control (RBAC) with roles: admin, manager, cashier, staff
+- Admin: Settings (currency, tax rate) and Audit Logs viewer
 
 All data is stored locally in your browser (localStorage) for simplicity. No backend required.
 
@@ -24,13 +25,15 @@ All data is stored locally in your browser (localStorage) for simplicity. No bac
   - Sales: add items to cart and checkout. Sales recorded with date, cashier, items, and total.
   - Receipts: each sale gets a receipt number and appears in a Recent Receipts list.
   - Customer data: optionally capture customer name at checkout and store it.
+  - Taxes & Discounts: configurable tax rate from Admin; per-order discount input; totals show subtotal, tax, grand total.
+  - Payment methods: record cash/card/other for each sale.
 - Accounting: tabs for
   - Ledger: view sales and grand total.
   - Invoices: add simple invoices (customer, amount, status) and list them.
   - Expenses: add expenses (category, note, amount) and list them.
   - Reports: summary cards for Sales Total, Paid Invoices, Expenses, and Net Income.
   Admin and Cashier have access; Staff does not.
-- Time: clock in/out, view your personal logs, attendance summary, and simple shift scheduling (admin can add shifts).
+- Time: clock in/out, view your personal logs, attendance summary, and simple shift scheduling (admin can add shifts). Admin and Manager can view time in/out logs for Staff and Cashiers.
 
 ## RBAC
 

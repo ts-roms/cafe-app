@@ -1,9 +1,11 @@
 "use client";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
+import { hasPermission } from "@/lib/rbac";
 
 export default function NavBar() {
   const { user, signOut } = useAuth();
+  const canAdmin = user ? hasPermission(user.role, "settings:manage") : false;
   return (
     <header className="w-full border-b border-black/10 dark:border-white/15 mb-6">
       <div className="max-w-5xl mx-auto p-4 flex items-center justify-between gap-4">
@@ -12,6 +14,7 @@ export default function NavBar() {
           <Link href="/pos" className="hover:underline">POS</Link>
           <Link href="/accounting" className="hover:underline">Accounting</Link>
           <Link href="/time" className="hover:underline">Time</Link>
+          {canAdmin && <Link href="/admin" className="hover:underline">Admin</Link>}
         </nav>
         <div className="text-sm flex items-center gap-3">
           {user ? (
