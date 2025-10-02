@@ -696,7 +696,20 @@ export function ensureDefaultWarehouse(): Warehouse {
 export function getStockLevels(): StockLevel[] {
   try {
     const raw = localStorage.getItem(STOCK_KEY);
-    return raw ? (JSON.parse(raw) as StockLevel[]) : [];
+    const levels = raw ? (JSON.parse(raw) as StockLevel[]) : [];
+    // Seed stock levels from existing inventory if empty (first-run compatibility)
+    if (levels.length === 0) {
+      const inv = getInventory();
+      const wh = ensureDefaultWarehouse();
+      const seeded: StockLevel[] = inv
+        .filter(p => (p.stock || 0) > 0)
+        .map(p => ({ itemId: p.id, warehouseId: wh.id, qty: p.stock }));
+      if (seeded.length > 0) {
+        localStorage.setItem(STOCK_KEY, JSON.stringify(seeded));
+        return seeded;
+      }
+    }
+    return levels;
   } catch {
     return [];
   }
