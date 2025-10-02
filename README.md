@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cafe App (Demo)
+
+A minimal Next.js app that demonstrates:
+- POS (Point of Sale)
+- Accounting (sales ledger, invoicing, expenses, and simple financial reports)
+- Time In/Out tracking
+- Role-Based Access Control (RBAC) with roles: admin, cashier, staff
+
+All data is stored locally in your browser (localStorage) for simplicity. No backend required.
 
 ## Getting Started
 
-First, run the development server:
+1. Install dependencies (if not already):
+   - npm install
+2. Run the dev server:
+   - npm run dev
+3. Open http://localhost:3000
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Features
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Login (mock): pick a role and optional display name. Stored in localStorage.
+- POS:
+  - Inventory: stock-aware catalog that prevents overselling. Seeded with sample items.
+  - Sales: add items to cart and checkout. Sales recorded with date, cashier, items, and total.
+  - Receipts: each sale gets a receipt number and appears in a Recent Receipts list.
+  - Customer data: optionally capture customer name at checkout and store it.
+- Accounting: tabs for
+  - Ledger: view sales and grand total.
+  - Invoices: add simple invoices (customer, amount, status) and list them.
+  - Expenses: add expenses (category, note, amount) and list them.
+  - Reports: summary cards for Sales Total, Paid Invoices, Expenses, and Net Income.
+  Admin and Cashier have access; Staff does not.
+- Time: clock in/out, view your personal logs, attendance summary, and simple shift scheduling (admin can add shifts).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## RBAC
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Defined in src/lib/rbac.ts
+- admin: all permissions
+- cashier: pos:use, time:record
+- staff: time:record
 
-## Learn More
+Pages are protected with a client-side Guard component that checks permissions.
 
-To learn more about Next.js, take a look at the following resources:
+## Notes
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- This is a demo: refreshing or clearing site data clears localStorage.
+- In production, replace localStorage with a database and real authentication.
