@@ -21,6 +21,7 @@ All data is stored locally in your browser (localStorage) for simplicity. No bac
 
 - Login (mock): pick a role and optional display name. Stored in localStorage.
 - POS:
+  - Access rule: Cashiers must time in before using POS.
   - Inventory: stock-aware catalog that prevents overselling. Seeded with sample items.
   - Sales: add items to cart and checkout. Sales recorded with date, cashier, items, and total.
   - Receipts: each sale gets a receipt number and appears in a Recent Receipts list.

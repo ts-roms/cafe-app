@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { RequirePermission } from "@/components/Guard";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -13,6 +14,7 @@ import {
   addOrGetCustomerByName,
   getSettings,
   addAudit,
+  getTimeLogs,
 } from "@/lib/storage";
 
 export default function POSPage() {
@@ -24,6 +26,7 @@ export default function POSPage() {
   const [taxRate, setTaxRate] = useState<number>(0);
   const [discount, setDiscount] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "other">("cash");
+  const [hasOpenTimeLog, setHasOpenTimeLog] = useState<boolean | null>(null);
 
   useEffect(() => {
     setInventory(getInventory());
@@ -31,6 +34,20 @@ export default function POSPage() {
     const s = getSettings();
     setTaxRate(typeof s.taxRate === "number" ? s.taxRate : 0);
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setHasOpenTimeLog(null);
+      return;
+    }
+    try {
+      const logs = getTimeLogs();
+      const open = logs.some((l) => l.userId === user.id && !l.clockOut);
+      setHasOpenTimeLog(open);
+    } catch {
+      setHasOpenTimeLog(false);
+    }
+  }, [user]);
 
   const items: SaleItem[] = useMemo(
     () =>
@@ -111,6 +128,13 @@ export default function POSPage() {
 
   return (
     <RequirePermission permission="pos:use">
+      {user && (user.role === "cashier" || user.role === "staff") && hasOpenTimeLog === false ? (
+        <div className="p-4 border rounded">
+          <h2 className="text-xl font-semibold mb-2">Time In Required</h2>
+          <p className="mb-3">You need to clock in before using the POS.</p>
+          <Link href="/time" className="underline">Go to Time page to Time In</Link>
+        </div>
+      ) : (
       <div className="grid md:grid-cols-2 gap-6">
         <section>
           <h1 className="text-2xl font-semibold mb-3">Catalog</h1>
@@ -217,6 +241,7 @@ export default function POSPage() {
           </div>
         </section>
       </div>
+      )}
     </RequirePermission>
   );
 }
