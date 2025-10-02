@@ -15,6 +15,21 @@ function hoursBetween(startIso: string, endIso?: string): number {
   return Math.max(0, h);
 }
 
+function hhmmToMinutes(hhmm: string): number {
+  const m = /^(\d{2}):(\d{2})$/.exec(hhmm || "");
+  if (!m) return 0;
+  const h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  return h * 60 + min;
+}
+
+function dateIsoToLocalMinutes(iso: string): { date: string; minutes: number } {
+  const d = new Date(iso);
+  const date = ymd(d);
+  const minutes = d.getHours() * 60 + d.getMinutes();
+  return { date, minutes };
+}
+
 export default function TimePage() {
   const { user } = useAuth();
   const [logs, setLogs] = useState<TimeLog[]>([]);
@@ -64,39 +79,91 @@ export default function TimePage() {
     if (!user) return;
     if (myOpenLog) return alert("Already clocked in");
 
-    // Optional: soft warning if clocking in outside scheduled shift
-    if (todayShiftsForMe.length > 0) {
+    // Determine today's scheduled shift (if any); pick earliest start if multiple
+    const today = ymd(new Date());
+    const todays = todayShiftsForMe.filter(s => s.date === today);
+    const scheduled = [...todays].sort((a,b) => a.start.localeCompare(b.start))[0];
+
+    // Optional: soft warning if clocking in outside scheduled shift window
+    if (scheduled) {
       const now = new Date();
       const hh = now.getHours().toString().padStart(2, "0");
       const mm = now.getMinutes().toString().padStart(2, "0");
       const cur = `${hh}:${mm}`;
-      const withinAny = todayShiftsForMe.some(s => cur >= s.start && cur <= s.end);
-      if (!withinAny) {
+      const within = cur >= scheduled.start && cur <= scheduled.end;
+      if (!within) {
         const proceed = confirm("You are clocking in outside your assigned shift. Proceed?");
         if (!proceed) return;
       }
     }
 
+    const nowIso = new Date().toISOString();
     const entry: TimeLog = {
       id: crypto.randomUUID(),
       userId: user.id,
       userName: user.name,
       userRole: user.role,
-      clockIn: new Date().toISOString(),
+      clockIn: nowIso,
+      shiftDate: scheduled?.date,
+      shiftStart: scheduled?.start,
+      shiftEnd: scheduled?.end,
     };
+    // Compute late minutes if scheduled
+    if (scheduled) {
+      const { minutes: inMin } = dateIsoToLocalMinutes(nowIso);
+      const schedStart = hhmmToMinutes(scheduled.start);
+      const late = Math.max(0, inMin - schedStart);
+      entry.lateMinutes = late;
+    }
+
     const updated = [entry, ...logs];
     setLogs(updated);
     saveTimeLogs(updated);
-    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: { id: user.id, name: user.name }, action: "time:in", details: "Clock in" });
+    addAudit({ id: crypto.randomUUID(), at: nowIso, user: { id: user.id, name: user.name }, action: "time:in", details: "Clock in" });
   };
 
   const clockOut = () => {
     if (!user) return;
     if (!myOpenLog) return alert("Not clocked in");
-    const updated = logs.map((l) => (l.id === myOpenLog.id ? { ...l, clockOut: new Date().toISOString() } : l));
+    const nowIso = new Date().toISOString();
+    const updated = logs.map((l) => {
+      if (l.id !== myOpenLog.id) return l;
+      const out: TimeLog = { ...l, clockOut: nowIso };
+      // Try to determine scheduled shift if not already attached
+      const { date: inDate, minutes: inMin } = dateIsoToLocalMinutes(l.clockIn);
+      let shiftStart = l.shiftStart;
+      let shiftEnd = l.shiftEnd;
+      if (!shiftStart || !shiftEnd) {
+        const candidate = shifts
+          .filter(s => s.userName === (user?.name || l.userName) && s.date === inDate)
+          .sort((a,b) => a.start.localeCompare(b.start))[0];
+        if (candidate) {
+          shiftStart = candidate.start;
+          shiftEnd = candidate.end;
+          out.shiftDate = candidate.date;
+          out.shiftStart = candidate.start;
+          out.shiftEnd = candidate.end;
+        }
+      }
+      // Compute late (if not set) and OT/UT when shift known
+      if (shiftStart) {
+        const schedStart = hhmmToMinutes(shiftStart);
+        const late = Math.max(0, inMin - schedStart);
+        if (late > 0 && (out.lateMinutes || 0) === 0) out.lateMinutes = late;
+      }
+      if (shiftEnd) {
+        const schedEnd = hhmmToMinutes(shiftEnd);
+        const { minutes: outMin } = dateIsoToLocalMinutes(nowIso);
+        const overtime = Math.max(0, outMin - schedEnd);
+        const undertime = Math.max(0, schedEnd - outMin);
+        out.overtimeMinutes = overtime;
+        out.undertimeMinutes = undertime;
+      }
+      return out;
+    });
     setLogs(updated);
     saveTimeLogs(updated);
-    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: { id: user.id, name: user.name }, action: "time:out", details: "Clock out" });
+    addAudit({ id: crypto.randomUUID(), at: nowIso, user: { id: user.id, name: user.name }, action: "time:out", details: "Clock out" });
   };
 
   // Attendance for last 14 days (simple: based on clockIn date)
@@ -183,7 +250,9 @@ export default function TimePage() {
         <div className="flex gap-2 flex-wrap">
           <button onClick={() => setTab("logs")} className={`px-3 py-1 rounded border ${tab === "logs" ? "bg-foreground text-background" : ""}`}>My Logs</button>
           <button onClick={() => setTab("attendance")} className={`px-3 py-1 rounded border ${tab === "attendance" ? "bg-foreground text-background" : ""}`}>Attendance</button>
-          <button onClick={() => setTab("shifts")} className={`px-3 py-1 rounded border ${tab === "shifts" ? "bg-foreground text-background" : ""}`}>Shifts</button>
+          {isAdmin && (
+            <button onClick={() => setTab("shifts")} className={`px-3 py-1 rounded border ${tab === "shifts" ? "bg-foreground text-background" : ""}`}>Shifts</button>
+          )}
           <button onClick={() => setTab("timeoff")} className={`px-3 py-1 rounded border ${tab === "timeoff" ? "bg-foreground text-background" : ""}`}>My Time Off</button>
           {isManagerOrAdmin && (
             <>
@@ -207,9 +276,21 @@ export default function TimePage() {
             ) : (
               <ul className="space-y-2">
                 {myLogs.map((l) => (
-                  <li key={l.id} className="p-2 border rounded flex justify-between">
-                    <span>In: {new Date(l.clockIn).toLocaleString()}</span>
-                    <span>{l.clockOut ? `Out: ${new Date(l.clockOut).toLocaleString()}` : "(Open)"}</span>
+                  <li key={l.id} className="p-2 border rounded">
+                    <div className="flex justify-between">
+                      <span>In: {new Date(l.clockIn).toLocaleString()}</span>
+                      <span>{l.clockOut ? `Out: ${new Date(l.clockOut).toLocaleString()}` : "(Open)"}</span>
+                    </div>
+                    {(l.shiftStart || l.shiftEnd) && (
+                      <div className="text-xs opacity-80 mt-1">Scheduled: {l.shiftDate || ymd(new Date(l.clockIn))} {l.shiftStart || "??"} - {l.shiftEnd || "??"}</div>
+                    )}
+                    {(l.lateMinutes || l.overtimeMinutes || l.undertimeMinutes) && (
+                      <div className="text-xs mt-1 flex flex-wrap gap-2">
+                        {l.lateMinutes ? <span className="px-2 py-0.5 rounded bg-yellow-200 text-yellow-900">Late {l.lateMinutes}m</span> : null}
+                        {l.overtimeMinutes ? <span className="px-2 py-0.5 rounded bg-green-200 text-green-900">OT {l.overtimeMinutes}m</span> : null}
+                        {l.undertimeMinutes ? <span className="px-2 py-0.5 rounded bg-red-200 text-red-900">UT {l.undertimeMinutes}m</span> : null}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -247,41 +328,48 @@ export default function TimePage() {
           <section className="space-y-4">
             <h2 className="text-xl font-semibold">Shifts</h2>
 
-            {isAdmin && (
-              <form onSubmit={submitShift} className="grid sm:grid-cols-5 gap-2 p-3 border rounded">
-                <input value={empName} onChange={(e) => setEmpName(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-2" placeholder="Employee name" />
-                <input type="date" value={shiftDate} onChange={(e) => setShiftDate(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" />
-                <input type="time" value={start} onChange={(e) => setStart(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" />
-                <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" />
-                <button className="px-4 py-2 rounded bg-foreground text-background sm:col-span-5">Add Shift</button>
-              </form>
-            )}
-
-            {myVisibleShifts.length === 0 ? (
-              <p className="opacity-70">No shifts scheduled.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full border text-sm">
-                  <thead className="bg-black/5 dark:bg-white/10">
-                    <tr>
-                      {isAdmin && <th className="text-left p-2 border">Employee</th>}
-                      <th className="text-left p-2 border">Date</th>
-                      <th className="text-left p-2 border">Start</th>
-                      <th className="text-left p-2 border">End</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {myVisibleShifts.map((s) => (
-                      <tr key={s.id} className="odd:bg-black/0 even:bg-black/5 dark:even:bg-white/5">
-                        {isAdmin && <td className="p-2 border">{s.userName}</td>}
-                        <td className="p-2 border">{s.date}</td>
-                        <td className="p-2 border">{s.start}</td>
-                        <td className="p-2 border">{s.end}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {!isAdmin ? (
+              <div className="p-3 border rounded">
+                <p className="mb-1">Access denied. Only Admin can manage shifts.</p>
+                <p className="text-xs opacity-70">Please contact your administrator for scheduling.</p>
               </div>
+            ) : (
+              <>
+                <form onSubmit={submitShift} className="grid sm:grid-cols-5 gap-2 p-3 border rounded">
+                  <input value={empName} onChange={(e) => setEmpName(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-2" placeholder="Employee name" />
+                  <input type="date" value={shiftDate} onChange={(e) => setShiftDate(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" />
+                  <input type="time" value={start} onChange={(e) => setStart(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" />
+                  <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" />
+                  <button className="px-4 py-2 rounded bg-foreground text-background sm:col-span-5">Add Shift</button>
+                </form>
+
+                {myVisibleShifts.length === 0 ? (
+                  <p className="opacity-70">No shifts scheduled.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full border text-sm">
+                      <thead className="bg-black/5 dark:bg-white/10">
+                        <tr>
+                          <th className="text-left p-2 border">Employee</th>
+                          <th className="text-left p-2 border">Date</th>
+                          <th className="text-left p-2 border">Start</th>
+                          <th className="text-left p-2 border">End</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {myVisibleShifts.map((s) => (
+                          <tr key={s.id} className="odd:bg-black/0 even:bg-black/5 dark:even:bg-white/5">
+                            <td className="p-2 border">{s.userName}</td>
+                            <td className="p-2 border">{s.date}</td>
+                            <td className="p-2 border">{s.start}</td>
+                            <td className="p-2 border">{s.end}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
             )}
           </section>
         )}
@@ -400,6 +488,9 @@ export default function TimePage() {
                       <th className="text-left p-2 border">In</th>
                       <th className="text-left p-2 border">Out</th>
                       <th className="text-right p-2 border">Hours</th>
+                      <th className="text-right p-2 border">Late (m)</th>
+                      <th className="text-right p-2 border">OT (m)</th>
+                      <th className="text-right p-2 border">UT (m)</th>
                       <th className="text-left p-2 border">Status</th>
                     </tr>
                   </thead>
@@ -413,6 +504,9 @@ export default function TimePage() {
                           <td className="p-2 border whitespace-nowrap">{new Date(l.clockIn).toLocaleString()}</td>
                           <td className="p-2 border whitespace-nowrap">{l.clockOut ? new Date(l.clockOut).toLocaleString() : "—"}</td>
                           <td className="p-2 border text-right">{hrs.toFixed(2)}</td>
+                          <td className="p-2 border text-right">{l.lateMinutes || 0}</td>
+                          <td className="p-2 border text-right">{l.overtimeMinutes || 0}</td>
+                          <td className="p-2 border text-right">{l.undertimeMinutes || 0}</td>
                           <td className="p-2 border">{l.clockOut ? "Closed" : "Open"}</td>
                         </tr>
                       );

@@ -53,6 +53,14 @@ export type TimeLog = {
   userRole?: Role; // role at the time of logging (optional for backward compatibility)
   clockIn: string; // ISO
   clockOut?: string; // ISO
+  // Optional: attached scheduled shift info (if available at time of clock-in)
+  shiftDate?: string; // YYYY-MM-DD of the scheduled shift
+  shiftStart?: string; // HH:MM scheduled start (local time)
+  shiftEnd?: string; // HH:MM scheduled end (local time)
+  // Derived attendance metrics in minutes
+  lateMinutes?: number; // minutes late based on scheduled start vs actual clock-in
+  overtimeMinutes?: number; // minutes beyond scheduled end at clock-out
+  undertimeMinutes?: number; // minutes short of scheduled end at clock-out
 };
 
 export function getSales(): Sale[] {
