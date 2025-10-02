@@ -31,15 +31,15 @@ export type Sale = {
   customer?: { id: string; name: string };
 };
 
-export type InventoryItem = { id: string; name: string; price: number; stock: number; barcode?: string; enabled?: boolean };
+export type InventoryItem = { id: string; name: string; price: number; stock: number; barcode?: string; enabled?: boolean; archived?: boolean; categoryId?: string; tags?: string[] };
 
 // Seed inventory if missing
 const DEFAULT_INVENTORY: InventoryItem[] = [
-  { id: "coffee", name: "Coffee", price: 3, stock: 20, barcode: "0001", enabled: true },
-  { id: "latte", name: "Latte", price: 4, stock: 20, barcode: "0002", enabled: true },
-  { id: "tea", name: "Tea", price: 2.5, stock: 20, barcode: "0003", enabled: true },
-  { id: "sandwich", name: "Sandwich", price: 5.5, stock: 20, barcode: "0004", enabled: true },
-  { id: "cake", name: "Cake Slice", price: 3.25, stock: 20, barcode: "0005", enabled: true },
+  { id: "coffee", name: "Coffee", price: 3, stock: 20, barcode: "0001", enabled: true, archived: false },
+  { id: "latte", name: "Latte", price: 4, stock: 20, barcode: "0002", enabled: true, archived: false },
+  { id: "tea", name: "Tea", price: 2.5, stock: 20, barcode: "0003", enabled: true, archived: false },
+  { id: "sandwich", name: "Sandwich", price: 5.5, stock: 20, barcode: "0004", enabled: true, archived: false },
+  { id: "cake", name: "Cake Slice", price: 3.25, stock: 20, barcode: "0005", enabled: true, archived: false },
 ];
 
 import type { Role } from "@/lib/rbac";
@@ -82,6 +82,26 @@ export function saveTimeLogs(logs: TimeLog[]) {
 }
 
 // Inventory helpers
+const CATEGORIES_KEY = "cafe_categories";
+export type Category = { id: string; name: string };
+export function getCategories(): Category[] {
+  try {
+    const raw = localStorage.getItem(CATEGORIES_KEY);
+    return raw ? (JSON.parse(raw) as Category[]) : [];
+  } catch {
+    return [];
+  }
+}
+export function saveCategories(list: Category[]) {
+  localStorage.setItem(CATEGORIES_KEY, JSON.stringify(list));
+}
+export function addCategory(cat: Category) {
+  const all = getCategories();
+  all.unshift(cat);
+  saveCategories(all);
+}
+
+// Inventory helpers
 export function getInventory(): InventoryItem[] {
   try {
     const raw = localStorage.getItem(INVENTORY_KEY);
@@ -102,7 +122,7 @@ export function findInventoryByBarcode(code: string): InventoryItem | undefined 
   const trimmed = (code || "").trim();
   if (!trimmed) return undefined;
   const inv = getInventory();
-  return inv.find((i) => i.barcode && i.barcode === trimmed && i.enabled !== false);
+  return inv.find((i) => i.barcode && i.barcode === trimmed && i.enabled !== false && i.archived !== true);
 }
 
 export function adjustInventoryForSale(items: SaleItem[]): InventoryItem[] {

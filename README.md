@@ -2,7 +2,7 @@
 
 A minimal Next.js app that demonstrates:
 - POS (Point of Sale)
-- Inventory module: Product Management, Stock Tracking, Purchasing & Receiving, Adjustments and Reports (multi-warehouse, serial/expiry, barcode/QR, accounting integration)
+- Inventory module: Product Management (add/edit/archive, categories & tags), Stock Tracking, Purchasing & Receiving, Adjustments and Reports (multi-warehouse, serial/expiry, barcode/QR, accounting integration)
 - Accounting (sales ledger, invoicing, expenses, and simple financial reports) with CSV export and double-entry journal
 - Time In/Out tracking with audit logs and shift scheduling
 - Role-Based Access Control (RBAC) with admin-managed roles and permissions (defaults: admin, manager, cashier, staff)

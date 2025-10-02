@@ -41,6 +41,19 @@ export default function POSPage() {
     setTaxRate(typeof s.taxRate === "number" ? s.taxRate : 0);
   }, []);
 
+  // Auto-refresh inventory from Inventory module when window gains focus (e.g., after editing products)
+  useEffect(() => {
+    const onFocus = () => setInventory(getInventory());
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", onFocus);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", onFocus);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (!user) {
       setHasOpenTimeLog(null);
@@ -225,9 +238,16 @@ export default function POSPage() {
         )}
         <div className="grid md:grid-cols-2 gap-6">
         <section>
-          <h1 className="text-2xl font-semibold mb-3">Catalog</h1>
+          <div className="flex items-center justify-between mb-3">
+            <h1 className="text-2xl font-semibold">Catalog</h1>
+            <button
+              className="text-sm px-2 py-1 border rounded"
+              onClick={() => setInventory(getInventory())}
+              title="Reload products from Inventory"
+            >Refresh from Inventory</button>
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {inventory.filter(p => p.enabled !== false).map((p) => {
+            {inventory.filter(p => p.enabled !== false && p.archived !== true).map((p) => {
               const out = p.stock <= 0;
               return (
                 <button

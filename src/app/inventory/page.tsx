@@ -24,16 +24,22 @@ import {
   applyAdjustment,
   type InventoryAdjustment,
   addAudit,
+  getCategories,
+  saveCategories,
+  addCategory,
+  type Category,
 } from "@/lib/storage";
 
 export default function InventoryPage() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<"products" | "warehouses" | "purchasing" | "receiving" | "adjust" | "reports">("products");
+  const [tab, setTab] = useState<"products" | "warehouses" | "purchasing" | "receiving" | "adjust" | "reports" | "categories">("products");
 
   const [products, setProducts] = useState<InventoryItem[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [stock, setStock] = useState(() => getStockLevels());
   const [posReady, setPosReady] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
 
   // purchasing state
   const [supplier, setSupplier] = useState("");
@@ -49,6 +55,7 @@ export default function InventoryPage() {
   useEffect(() => {
     setProducts(getInventory());
     setWarehouses(getWarehouses());
+    setCategories(getCategories());
     ensureDefaultWarehouse();
     setPos(getPurchases());
     setPosReady(true);
@@ -74,6 +81,14 @@ export default function InventoryPage() {
     alert("Products saved");
   };
 
+  const addProduct = () => {
+    const name = prompt("Product name", "New Product");
+    if (!name) return;
+    const id = `prod-${crypto.randomUUID().slice(0, 8)}`;
+    const item: InventoryItem = { id, name, price: 0, stock: 0, enabled: true, archived: false };
+    setProducts((cur) => [item, ...cur]);
+  };
+
   const addWh = () => {
     const name = prompt("Warehouse name", "Secondary");
     if (!name) return;
@@ -87,6 +102,28 @@ export default function InventoryPage() {
     const next = warehouses.map((w) => (w.id === id ? { ...w, name } : w));
     saveWarehouses(next);
     setWarehouses(next);
+  };
+
+  const saveCats = () => {
+    saveCategories(categories);
+    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "inventory:categories:save" });
+    alert("Categories saved");
+  };
+
+  const doAddCategory = () => {
+    const name = prompt("Category name", "Beverages");
+    if (!name) return;
+    const cat: Category = { id: `cat-${crypto.randomUUID().slice(0,8)}`, name };
+    addCategory(cat);
+    setCategories(cur => [cat, ...cur]);
+  };
+
+  const doDeleteCategory = (id: string) => {
+    const used = products.some(p => p.categoryId === id);
+    if (used) { alert("Cannot delete: category in use by a product"); return; }
+    const next = categories.filter(c => c.id !== id);
+    saveCategories(next);
+    setCategories(next);
   };
 
   const createPO = () => {
@@ -146,13 +183,20 @@ export default function InventoryPage() {
           <Tab label="Receiving" active={tab === "receiving"} onClick={() => setTab("receiving")} />
           <Tab label="Adjustments" active={tab === "adjust"} onClick={() => setTab("adjust")} />
           <Tab label="Reports" active={tab === "reports"} onClick={() => setTab("reports")} />
+          <Tab label="Categories" active={tab === "categories"} onClick={() => setTab("categories")} />
         </div>
 
         {tab === "products" && (
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold">Products</h2>
-              <button className="px-3 py-1 border rounded" onClick={saveProducts}>Save</button>
+              <div className="flex items-center gap-2">
+                <label className="text-sm flex items-center gap-1">
+                  <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} /> Show Archived
+                </label>
+                <button className="px-3 py-1 border rounded" onClick={addProduct}>Add Product</button>
+                <button className="px-3 py-1 border rounded" onClick={saveProducts}>Save</button>
+              </div>
             </div>
             {products.length === 0 ? (
               <p className="opacity-70">No products. POS seeds demo items on first use.</p>
@@ -166,18 +210,38 @@ export default function InventoryPage() {
                       <th className="text-right p-2 border">Price</th>
                       <th className="text-right p-2 border">Cost</th>
                       <th className="text-left p-2 border">Barcode</th>
+                      <th className="text-left p-2 border">Category</th>
+                      <th className="text-left p-2 border">Tags</th>
                       <th className="text-left p-2 border">Enabled</th>
+                      <th className="text-left p-2 border">Archived</th>
                       <th className="text-right p-2 border">Total Stock</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {products.map((p, idx) => (
+                    {products.filter(p => showArchived || p.archived !== true).map((p, idx) => (
                       <tr key={p.id} className="odd:bg-black/0 even:bg-black/5 dark:even:bg-white/5">
                         <td className="p-2 border whitespace-nowrap">{p.id}</td>
                         <td className="p-2 border"><input value={p.name} onChange={e => setProducts(cur => cur.map((x,i)=> i===idx? { ...x, name: e.target.value }: x))} className="border rounded px-2 py-1 bg-transparent w-full"/></td>
                         <td className="p-2 border text-right"><input value={String(p.price)} onChange={e => setProducts(cur => cur.map((x,i)=> i===idx? { ...x, price: parseFloat(e.target.value)||0 }: x))} className="border rounded px-2 py-1 bg-transparent w-24 text-right" inputMode="decimal"/></td>
                         <td className="p-2 border text-right"><input value={String((p as any).cost || "")} onChange={e => setProducts(cur => cur.map((x,i)=> i===idx? { ...(x as any), cost: parseFloat(e.target.value)||0 }: x))} className="border rounded px-2 py-1 bg-transparent w-24 text-right" inputMode="decimal"/></td>
                         <td className="p-2 border"><input value={p.barcode || ""} onChange={e => setProducts(cur => cur.map((x,i)=> i===idx? { ...x, barcode: e.target.value }: x))} className="border rounded px-2 py-1 bg-transparent w-full"/></td>
+                        <td className="p-2 border">
+                          <select value={p.categoryId || ""} onChange={e => setProducts(cur => cur.map((x,i)=> i===idx? { ...x, categoryId: e.target.value || undefined }: x))} className="border rounded px-2 py-1 bg-transparent w-full">
+                            <option value="">—</option>
+                            {categories.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                          </select>
+                        </td>
+                        <td className="p-2 border">
+                          <input
+                            value={(p.tags || []).join(", ")}
+                            onChange={e => {
+                              const arr = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
+                              setProducts(cur => cur.map((x,i)=> i===idx? { ...x, tags: arr }: x));
+                            }}
+                            className="border rounded px-2 py-1 bg-transparent w-full"
+                            placeholder="comma,separated,tags"
+                          />
+                        </td>
                         <td className="p-2 border">
                           <label className="text-sm flex items-center gap-2">
                             <input
@@ -186,6 +250,16 @@ export default function InventoryPage() {
                               onChange={e => setProducts(cur => cur.map((x,i)=> i===idx? { ...x, enabled: e.target.checked }: x))}
                             />
                             <span>{p.enabled === false ? "Disabled" : "Enabled"}</span>
+                          </label>
+                        </td>
+                        <td className="p-2 border">
+                          <label className="text-sm flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={p.archived === true}
+                              onChange={e => setProducts(cur => cur.map((x,i)=> i===idx? { ...x, archived: e.target.checked }: x))}
+                            />
+                            <span>{p.archived ? "Archived" : "Active"}</span>
                           </label>
                         </td>
                         <td className="p-2 border text-right">{posReady ? (totalByItem[p.id] || 0) : p.stock}</td>
@@ -322,6 +396,38 @@ export default function InventoryPage() {
                 </tbody>
               </table>
             </div>
+          </section>
+        )}
+
+        {tab === "categories" && (
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Categories</h2>
+              <div className="flex items-center gap-2">
+                <button className="px-3 py-1 border rounded" onClick={doAddCategory}>Add Category</button>
+                <button className="px-3 py-1 border rounded" onClick={saveCats}>Save</button>
+              </div>
+            </div>
+            {categories.length === 0 ? (
+              <p className="opacity-70">No categories defined.</p>
+            ) : (
+              <ul className="space-y-2">
+                {categories.map((c, idx) => (
+                  <li key={c.id} className="p-2 border rounded flex items-center gap-2">
+                    <input
+                      value={c.name}
+                      onChange={e => setCategories(cur => cur.map((x,i)=> i===idx? { ...x, name: e.target.value }: x))}
+                      className="border rounded px-2 py-1 bg-transparent flex-1"
+                    />
+                    <span className="text-xs opacity-70">{c.id}</span>
+                    <button className="text-xs px-2 py-1 border rounded"
+                      onClick={() => doDeleteCategory(c.id)}
+                      title="Delete category"
+                    >Delete</button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         )}
 
