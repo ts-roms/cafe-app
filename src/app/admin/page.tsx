@@ -308,10 +308,16 @@ export default function AdminPage() {
                           <input value={u.username || ""} onChange={(e) => {
                             const rec = users.find(x => x.id === u.id);
                             if (!rec) return;
-                            const next = { ...rec, username: e.target.value } as UserRecord;
+                            const newUsername = (e.target.value || '').trim();
+                            // Enforce uniqueness (case-insensitive) and non-empty
+                            if (newUsername && users.some(x => x.id !== u.id && (x.username || '').toLowerCase() === newUsername.toLowerCase())) {
+                              alert('Username already exists');
+                              return;
+                            }
+                            const next = { ...rec, username: newUsername || undefined } as UserRecord;
                             updateUser(next);
                             setUsers(cur => cur.map(x => x.id === u.id ? next : x));
-                            addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "user:update:username", details: `${rec.name} -> ${e.target.value}` });
+                            addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "user:update:username", details: `${rec.name} -> ${newUsername}` });
                           }} className="border rounded px-2 py-1 bg-transparent w-full" placeholder="username" />
                         </td>
                         <td className="p-2 border">
