@@ -43,6 +43,11 @@ export default function AdminPage() {
   const [newUserCode, setNewUserCode] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserRole, setNewUserRole] = useState<string>("cashier");
+  // New user extra fields
+  const [newUserBirthday, setNewUserBirthday] = useState<string>("");
+  const [newUserVacation, setNewUserVacation] = useState<string>("");
+  const [newUserSick, setNewUserSick] = useState<string>("");
+  const [newUserPersonal, setNewUserPersonal] = useState<string>("");
 
   // time off for calendar
   const [timeOff, setTimeOff] = useState<TimeOffRequest[]>([]);
@@ -130,7 +135,20 @@ export default function AdminPage() {
     if (!n || !un) { alert("Enter name and username"); return; }
     if (!rbac.roles[newUserRole]) return alert("Role does not exist");
     if (users.some(u => (u.username || '').toLowerCase() === un.toLowerCase())) { alert('Username already exists'); return; }
-    const rec: UserRecord = { id: crypto.randomUUID(), name: n, role: newUserRole, username: un, code: newUserCode.trim() || undefined, password: newUserPassword || undefined };
+    const vac = Math.max(0, parseFloat(newUserVacation) || 0);
+    const sick = Math.max(0, parseFloat(newUserSick) || 0);
+    const pers = Math.max(0, parseFloat(newUserPersonal) || 0);
+    const credits = (vac > 0 || sick > 0 || pers > 0) ? { vacation: vac, sick, personal: pers } : undefined;
+    const rec: UserRecord = {
+      id: crypto.randomUUID(),
+      name: n,
+      role: newUserRole,
+      username: un,
+      code: newUserCode.trim() || undefined,
+      password: newUserPassword || undefined,
+      birthday: newUserBirthday || undefined,
+      leaveCredits: credits,
+    };
     addUser(rec);
     setUsers((cur) => [rec, ...cur]);
     addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "user:add", details: `${rec.name} (${rec.role})` });
@@ -138,6 +156,11 @@ export default function AdminPage() {
     setNewUserUsername("");
     setNewUserCode("");
     setNewUserPassword("");
+    setNewUserRole("cashier");
+    setNewUserBirthday("");
+    setNewUserVacation("");
+    setNewUserSick("");
+    setNewUserPersonal("");
   };
 
   const onChangeUser = (id: string, name: string, role: string) => {
@@ -241,6 +264,14 @@ export default function AdminPage() {
                 <input value={newUserUsername} onChange={(e) => setNewUserUsername(e.target.value)} className="border rounded px-3 py-1 bg-transparent" placeholder="Username" />
                 <input value={newUserCode} onChange={(e) => setNewUserCode(e.target.value)} className="border rounded px-3 py-1 bg-transparent" placeholder="Code (optional)" />
                 <input type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} className="border rounded px-3 py-1 bg-transparent" placeholder="Password" />
+                <input type="date" value={newUserBirthday} onChange={(e) => setNewUserBirthday(e.target.value)} className="border rounded px-3 py-1 bg-transparent" title="Birthday" />
+                <div className="flex items-center gap-1">
+                  <input value={newUserVacation} onChange={(e) => setNewUserVacation(e.target.value)} className="w-16 border rounded px-2 py-1 bg-transparent text-right" placeholder="V" inputMode="decimal" title="Vacation credits" />
+                  <span className="opacity-60">/</span>
+                  <input value={newUserSick} onChange={(e) => setNewUserSick(e.target.value)} className="w-16 border rounded px-2 py-1 bg-transparent text-right" placeholder="S" inputMode="decimal" title="Sick credits" />
+                  <span className="opacity-60">/</span>
+                  <input value={newUserPersonal} onChange={(e) => setNewUserPersonal(e.target.value)} className="w-16 border rounded px-2 py-1 bg-transparent text-right" placeholder="P" inputMode="decimal" title="Personal credits" />
+                </div>
                 <select value={newUserRole} onChange={(e) => setNewUserRole(e.target.value)} className="border rounded px-3 py-1 bg-transparent">
                   {roleNames.map((r) => (
                     <option key={r} value={r}>{r}</option>

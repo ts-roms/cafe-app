@@ -7,8 +7,8 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "test": "jest",
-    "test:watch": "jest --watch"
+    "test": "jest -c jest.config.js",
+    "test:watch": "jest -c jest.config.js --watch"
   },
   "dependencies": {
     "react": "19.1.0",

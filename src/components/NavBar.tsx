@@ -22,6 +22,7 @@ export default function NavBar() {
           {user ? (
             <>
               <span className="opacity-80">{user.name} ({user.role})</span>
+              <Link href="/profile" className="px-3 py-1 rounded border hover:bg-black/5 dark:hover:bg-white/10">Profile</Link>
               <button onClick={signOut} className="px-3 py-1 rounded border hover:bg-black/5 dark:hover:bg-white/10">Logout</button>
             </>
           ) : (
