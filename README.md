@@ -39,6 +39,8 @@ This project uses Jest for unit testing.
   - Receipts: each sale gets a receipt number and appears in a Recent Receipts list.
   - Customer data: optionally capture customer name at checkout and store it.
   - Taxes & Discounts: configurable tax rate from Admin; per-order discount input; totals show subtotal, tax, grand total.
+  - Discounts & Promos: Admin-manageable promo codes (amount or percent, min subtotal, expiry). Apply promo codes at checkout; promo discounts are combined with manual discount before tax.
+  - Sales Processing: Hold carts and resume later from a Held Orders list (per cashier).
   - Payment methods: record cash/card/other for each sale.
   - Barcode scanning: scan with a keyboard-wedge barcode scanner or type a code and press Enter. Seed barcodes: 0001–0005 for demo items.
   - Inventory tracking: stock-aware catalog with low-stock indicator and manager/Admin restock action from POS.

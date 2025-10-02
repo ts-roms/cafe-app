@@ -18,12 +18,17 @@ import {
   type UserRecord,
   getTimeOffRequests,
   type TimeOffRequest,
+  getPromos,
+  savePromos,
+  addPromo,
+  updatePromo,
+  type Promo,
 } from "@/lib/storage";
 import { ALL_PERMISSIONS, getRBACConfig, saveRBACConfig, type RBACConfig } from "@/lib/rbac";
 
 export default function AdminPage() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<"settings" | "audit" | "roles" | "users" | "calendar">("settings");
+  const [tab, setTab] = useState<"settings" | "audit" | "roles" | "users" | "calendar" | "promos">("settings");
 
   // settings
   const [settings, setSettings] = useState<Settings>(getSettings());
@@ -38,6 +43,8 @@ export default function AdminPage() {
 
   // time off for calendar
   const [timeOff, setTimeOff] = useState<TimeOffRequest[]>([]);
+  // promos
+  const [promos, setPromos] = useState<Promo[]>([]);
 
   // roles/permissions (RBAC)
   const [rbac, setRbac] = useState<RBACConfig>(getRBACConfig());
@@ -53,6 +60,7 @@ export default function AdminPage() {
     setUsers(getUsers());
     setRbac(getRBACConfig());
     setTimeOff(getTimeOffRequests());
+    setPromos(getPromos());
   }, []);
 
   const save = (e: React.FormEvent) => {
@@ -158,6 +166,7 @@ export default function AdminPage() {
           <button onClick={() => setTab("settings")} className={`px-3 py-1 rounded border ${tab === "settings" ? "bg-foreground text-background" : ""}`}>Settings</button>
           <button onClick={() => setTab("roles")} className={`px-3 py-1 rounded border ${tab === "roles" ? "bg-foreground text-background" : ""}`}>Roles</button>
           <button onClick={() => setTab("users")} className={`px-3 py-1 rounded border ${tab === "users" ? "bg-foreground text-background" : ""}`}>Users</button>
+          <button onClick={() => setTab("promos")} className={`px-3 py-1 rounded border ${tab === "promos" ? "bg-foreground text-background" : ""}`}>Promos</button>
           <button onClick={() => setTab("calendar")} className={`px-3 py-1 rounded border ${tab === "calendar" ? "bg-foreground text-background" : ""}`}>Calendar</button>
           <button onClick={() => setTab("audit")} className={`px-3 py-1 rounded border ${tab === "audit" ? "bg-foreground text-background" : ""}`}>Audit Logs</button>
         </div>
@@ -261,6 +270,67 @@ export default function AdminPage() {
                         </td>
                         <td className="p-2 border">
                           <button className="text-xs px-2 py-1 border rounded" onClick={() => onDeleteUser(u.id)}>Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
+
+        {tab === "promos" && (
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Promotions</h2>
+              <div className="flex gap-2">
+                <button className="px-3 py-1 rounded border text-sm" onClick={() => {
+                  const p: Promo = { id: crypto.randomUUID(), code: "SAVE10", type: "percent", value: 10, minSubtotal: 0, active: true };
+                  addPromo(p);
+                  setPromos(cur => [p, ...cur]);
+                  addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "promo:add", details: `${p.code} ${p.type} ${p.value}` });
+                }}>Add Promo</button>
+                <button className="px-3 py-1 rounded border text-sm" onClick={() => {
+                  savePromos(promos);
+                  addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "promo:save", details: `${promos.length} promos` });
+                  alert("Saved");
+                }}>Save</button>
+              </div>
+            </div>
+            {promos.length === 0 ? (
+              <p className="opacity-70">No promos configured.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full border text-sm">
+                  <thead className="bg-black/5 dark:bg-white/10">
+                    <tr>
+                      <th className="text-left p-2 border">Code</th>
+                      <th className="text-left p-2 border">Type</th>
+                      <th className="text-right p-2 border">Value</th>
+                      <th className="text-right p-2 border">Min Subtotal</th>
+                      <th className="text-left p-2 border">Expires</th>
+                      <th className="text-left p-2 border">Active</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {promos.map((p, idx) => (
+                      <tr key={p.id} className="odd:bg-black/0 even:bg-black/5 dark:even:bg-white/5">
+                        <td className="p-2 border"><input value={p.code} onChange={e => setPromos(cur => cur.map((x,i)=> i===idx? { ...x, code: e.target.value }: x))} className="border rounded px-2 py-1 bg-transparent" /></td>
+                        <td className="p-2 border">
+                          <select value={p.type} onChange={e => setPromos(cur => cur.map((x,i)=> i===idx? { ...x, type: e.target.value as any }: x))} className="border rounded px-2 py-1 bg-transparent">
+                            <option value="amount">Amount</option>
+                            <option value="percent">Percent</option>
+                          </select>
+                        </td>
+                        <td className="p-2 border text-right"><input value={String(p.value)} onChange={e => setPromos(cur => cur.map((x,i)=> i===idx? { ...x, value: parseFloat(e.target.value)||0 }: x))} className="border rounded px-2 py-1 bg-transparent w-24 text-right" inputMode="decimal" /></td>
+                        <td className="p-2 border text-right"><input value={String(p.minSubtotal || 0)} onChange={e => setPromos(cur => cur.map((x,i)=> i===idx? { ...x, minSubtotal: parseFloat(e.target.value)||0 }: x))} className="border rounded px-2 py-1 bg-transparent w-24 text-right" inputMode="decimal" /></td>
+                        <td className="p-2 border"><input type="date" value={(p.expiresAt || "").slice(0,10)} onChange={e => setPromos(cur => cur.map((x,i)=> i===idx? { ...x, expiresAt: e.target.value ? new Date(e.target.value).toISOString() : undefined }: x))} className="border rounded px-2 py-1 bg-transparent" /></td>
+                        <td className="p-2 border">
+                          <label className="text-sm flex items-center gap-2">
+                            <input type="checkbox" checked={p.active} onChange={e => setPromos(cur => cur.map((x,i)=> i===idx? { ...x, active: e.target.checked }: x))} />
+                            <span>{p.active ? "Active" : "Inactive"}</span>
+                          </label>
                         </td>
                       </tr>
                     ))}

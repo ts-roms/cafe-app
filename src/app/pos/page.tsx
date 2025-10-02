@@ -21,6 +21,12 @@ import {
   postSaleToJournal,
   getCategories,
   type Category,
+  getPromos,
+  type Promo,
+  getHeldOrders,
+  addHeldOrder,
+  removeHeldOrder,
+  type HeldOrder,
 } from "@/lib/storage";
 
 export default function POSPage() {
@@ -36,6 +42,10 @@ export default function POSPage() {
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
   const [scan, setScan] = useState<string>("");
   const [categories, setCategories] = useState<Category[]>([]);
+  const [promos, setPromos] = useState<Promo[]>([]);
+  const [promoInput, setPromoInput] = useState<string>("");
+  const [appliedPromoId, setAppliedPromoId] = useState<string>("");
+  const [held, setHeld] = useState<HeldOrder[]>([]);
 
   useEffect(() => {
     setInventory(getInventory());
@@ -43,6 +53,8 @@ export default function POSPage() {
     setRecent(getSales().slice(0, 5));
     const s = getSettings();
     setTaxRate(typeof s.taxRate === "number" ? s.taxRate : 0);
+    setPromos(getPromos());
+    setHeld(getHeldOrders());
   }, []);
 
   // Auto-refresh inventory and categories from Inventory module when window gains focus (e.g., after editing products)
@@ -106,11 +118,27 @@ export default function POSPage() {
     const d = parseFloat(discount);
     return isFinite(d) && d > 0 ? Math.min(d, subtotal) : 0;
   }, [discount, subtotal]);
+  const appliedPromo = useMemo(() => promos.find(p => p.id === appliedPromoId), [promos, appliedPromoId]);
+  const promoDiscountAmt = useMemo(() => {
+    const p = appliedPromo;
+    if (!p) return 0;
+    // validate active, expiry, and min subtotal
+    const now = Date.now();
+    if (!p.active) return 0;
+    if (p.expiresAt && new Date(p.expiresAt).getTime() < now) return 0;
+    const baseBeforeTax = Math.max(0, subtotal - discountAmt);
+    if ((p.minSubtotal || 0) > baseBeforeTax) return 0;
+    let val = 0;
+    if (p.type === "percent") val = (baseBeforeTax * (p.value || 0)) / 100;
+    else val = p.value || 0;
+    val = Math.min(val, baseBeforeTax);
+    return parseFloat(val.toFixed(2));
+  }, [appliedPromo, subtotal, discountAmt]);
   const taxAmount = useMemo(() => {
-    const base = Math.max(0, subtotal - discountAmt);
+    const base = Math.max(0, subtotal - discountAmt - promoDiscountAmt);
     return parseFloat(((base * (taxRate || 0)) / 100).toFixed(2));
-  }, [subtotal, discountAmt, taxRate]);
-  const grandTotal = useMemo(() => parseFloat((Math.max(0, subtotal - discountAmt) + taxAmount).toFixed(2)), [subtotal, discountAmt, taxAmount]);
+  }, [subtotal, discountAmt, promoDiscountAmt, taxRate]);
+  const grandTotal = useMemo(() => parseFloat((Math.max(0, subtotal - discountAmt - promoDiscountAmt) + taxAmount).toFixed(2)), [subtotal, discountAmt, promoDiscountAmt, taxAmount]);
 
   const canManageInv = user ? hasPermission(user.role, "inventory:manage") : false;
 
@@ -164,6 +192,7 @@ export default function POSPage() {
       ${itemsHtml}
       <div class="muted">Subtotal: $${(sale.items.reduce((s, it) => s + it.price * it.qty, 0)).toFixed(2)}</div>
       <div class="muted">Discount: $${(sale.discountAmount || 0).toFixed(2)}</div>
+      ${sale.promoCode ? `<div class="muted">Promo (${sale.promoCode}): -$${(sale.promoDiscount || 0).toFixed(2)}</div>` : ""}
       <div class="muted">Tax: $${(sale.taxAmount || 0).toFixed(2)}</div>
       <div class="total">Total: $${sale.total.toFixed(2)}</div>
       </body></html>`;
@@ -213,7 +242,9 @@ export default function POSPage() {
       items,
       taxRate,
       taxAmount,
-      discountAmount: discountAmt,
+      discountAmount: parseFloat(((discountAmt + promoDiscountAmt)).toFixed(2)),
+      promoCode: appliedPromo?.code,
+      promoDiscount: promoDiscountAmt,
       paymentMethod,
       total: grandTotal,
       receiptNo,
@@ -227,6 +258,8 @@ export default function POSPage() {
     setInventory(updatedInv);
     setRecent((cur) => [sale, ...cur].slice(0, 5));
     clear();
+    setAppliedPromoId("");
+    setPromoInput("");
     alert(`Sale recorded. Receipt: ${receiptNo}`);
   };
 
@@ -322,7 +355,7 @@ export default function POSPage() {
                 <div className="font-semibold">Subtotal</div>
                 <div className="font-semibold">${subtotal.toFixed(2)}</div>
               </div>
-              <div className="grid sm:grid-cols-2 gap-2">
+              <div className="grid sm:grid-cols-3 gap-2">
                 <div>
                   <label className="block text-sm mb-1">Discount (amount)</label>
                   <input
@@ -333,6 +366,30 @@ export default function POSPage() {
                     inputMode="decimal"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm mb-1">Promo Code</label>
+                  <div className="flex gap-2">
+                    <input
+                      value={promoInput}
+                      onChange={(e) => setPromoInput(e.target.value)}
+                      className="flex-1 border rounded px-3 py-2 bg-transparent"
+                      placeholder="Enter code"
+                    />
+                    {appliedPromo ? (
+                      <button type="button" className="px-3 py-2 rounded border" onClick={() => { setAppliedPromoId(""); setPromoInput(""); }}>Remove</button>
+                    ) : (
+                      <button type="button" className="px-3 py-2 rounded border" onClick={() => {
+                        const p = (promos || []).find(x => x.code.toLowerCase() === (promoInput||"").trim().toLowerCase());
+                        if (!p) { alert("Promo not found"); return; }
+                        setAppliedPromoId(p.id);
+                        alert(`Applied promo ${p.code}`);
+                      }}>Apply</button>
+                    )}
+                  </div>
+                  {appliedPromo ? <div className="text-xs opacity-70 mt-1">Applied: {appliedPromo.code} {appliedPromo.type === 'percent' ? `(${appliedPromo.value}% off)` : `(-$${appliedPromo.value})`}</div> : null}
+                </div>
+              </div>
+              <div className="grid sm:grid-cols-3 gap-2">
                 <div>
                   <label className="block text-sm mb-1">Payment Method</label>
                   <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as any)} className="w-full border rounded px-3 py-2 bg-transparent">
@@ -362,6 +419,17 @@ export default function POSPage() {
               <div className="flex gap-2">
                 <button onClick={checkout} className="px-4 py-2 rounded bg-foreground text-background">Checkout</button>
                 <button onClick={clear} className="px-4 py-2 rounded border">Clear</button>
+                <button onClick={() => {
+                  if (!user) return;
+                  if (items.length === 0) { alert("Cart is empty"); return; }
+                  const note = prompt("Hold note (optional)") || undefined;
+                  const h: HeldOrder = { id: crypto.randomUUID(), at: new Date().toISOString(), cashier: { id: user.id, name: user.name }, items, note };
+                  addHeldOrder(h);
+                  setHeld(cur => [h, ...cur]);
+                  clear();
+                  addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: { id: user.id, name: user.name }, action: "pos:hold", details: h.note || "" });
+                  alert("Cart held");
+                }} className="px-4 py-2 rounded border">Hold</button>
               </div>
             </div>
           )}
@@ -382,6 +450,43 @@ export default function POSPage() {
                 ))}
               </ul>
             )}
+          </div>
+          <div className="pt-2">
+            <h3 className="text-lg font-semibold mb-1">Held Orders</h3>
+            {(() => {
+              const mine = user ? held.filter(h => h.cashier.id === user.id) : [];
+              return mine.length === 0 ? (
+                <p className="text-sm opacity-70">No held orders.</p>
+              ) : (
+                <ul className="space-y-1 text-sm">
+                  {mine.map(h => (
+                    <li key={h.id} className="flex items-center justify-between gap-2 border rounded p-2">
+                      <span className="whitespace-nowrap">{new Date(h.at).toLocaleString()}</span>
+                      <span className="flex-1 text-right sm:text-left">{h.note || "(no note)"}</span>
+                      <div className="flex items-center gap-2">
+                        <button className="text-xs px-2 py-1 border rounded" onClick={() => {
+                          // restore quantities (clamped by current stock)
+                          const next: Record<string, number> = {};
+                          for (const it of h.items) {
+                            const prod = inventory.find(p => p.id === it.id);
+                            const max = prod ? prod.stock : it.qty;
+                            next[it.id] = Math.min(it.qty, Math.max(0, max));
+                          }
+                          setCart(next);
+                          removeHeldOrder(h.id);
+                          setHeld(cur => cur.filter(x => x.id !== h.id));
+                        }}>Restore</button>
+                        <button className="text-xs px-2 py-1 border rounded" onClick={() => {
+                          if (!confirm("Delete held order?")) return;
+                          removeHeldOrder(h.id);
+                          setHeld(cur => cur.filter(x => x.id !== h.id));
+                        }}>Delete</button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              );
+            })()}
           </div>
         </section>
       </div>

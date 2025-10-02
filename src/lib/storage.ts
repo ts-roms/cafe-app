@@ -23,7 +23,9 @@ export type Sale = {
   // Order-level adjustments
   taxRate?: number; // percent (e.g., 12 for 12%)
   taxAmount?: number; // computed tax amount
-  discountAmount?: number; // absolute amount discount applied to subtotal before tax
+  discountAmount?: number; // total discount applied (manual + promo)
+  promoCode?: string; // applied promo code, if any
+  promoDiscount?: number; // discount amount from promo only
   paymentMethod?: "cash" | "card" | "other";
   // Final amount charged (subtotal - discount + tax)
   total: number;
@@ -528,6 +530,47 @@ export function addAudit(entry: AuditEntry) {
   saveAuditLogs(all);
 }
 
+// --- Discounts & Promos ---
+const PROMOS_KEY = "cafe_promos";
+export type Promo = {
+  id: string;
+  code: string; // case-insensitive code entered at POS
+  type: "amount" | "percent"; // discount type
+  value: number; // amount in currency or percent
+  minSubtotal?: number; // optional: minimum subtotal to qualify (before discounts)
+  active: boolean;
+  expiresAt?: string; // ISO date-only or ISO datetime; if set and in past, not valid
+};
+
+export function getPromos(): Promo[] {
+  try {
+    const raw = localStorage.getItem(PROMOS_KEY);
+    return raw ? (JSON.parse(raw) as Promo[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function savePromos(list: Promo[]) {
+  localStorage.setItem(PROMOS_KEY, JSON.stringify(list));
+}
+
+export function addPromo(p: Promo) {
+  const all = getPromos();
+  all.unshift(p);
+  savePromos(all);
+}
+
+export function updatePromo(p: Promo) {
+  const all = getPromos().map(x => (x.id === p.id ? p : x));
+  savePromos(all);
+}
+
+export function findPromoByCode(code: string): Promo | undefined {
+  const c = (code || "").trim().toLowerCase();
+  if (!c) return undefined;
+  return getPromos().find(p => p.code.toLowerCase() === c);
+}
 
 // Users directory and RBAC config passthrough (for Admin management)
 
@@ -570,6 +613,40 @@ export function deleteUser(id: string) {
   saveUsers(all);
 }
 
+
+// --- Held Orders (Sales Processing) ---
+const HELD_KEY = "cafe_held_orders";
+export type HeldOrder = {
+  id: string;
+  at: string; // ISO
+  cashier: { id: string; name: string };
+  items: SaleItem[];
+  note?: string;
+};
+
+export function getHeldOrders(): HeldOrder[] {
+  try {
+    const raw = localStorage.getItem(HELD_KEY);
+    return raw ? (JSON.parse(raw) as HeldOrder[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveHeldOrders(list: HeldOrder[]) {
+  localStorage.setItem(HELD_KEY, JSON.stringify(list));
+}
+
+export function addHeldOrder(h: HeldOrder) {
+  const all = getHeldOrders();
+  all.unshift(h);
+  saveHeldOrders(all);
+}
+
+export function removeHeldOrder(id: string) {
+  const next = getHeldOrders().filter(h => h.id !== id);
+  saveHeldOrders(next);
+}
 
 // --- Payments Providers (Integrations) ---
 const PAYMENT_PROVIDERS_KEY = "cafe_payment_providers";
