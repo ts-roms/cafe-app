@@ -290,6 +290,7 @@ export type UserRecord = {
   id: string;
   name: string;
   role: Role;
+  hourlyRate?: number; // optional: used by Payroll calculations
 };
 
 export function getUsers(): UserRecord[] {
@@ -319,4 +320,93 @@ export function updateUser(u: UserRecord) {
 export function deleteUser(id: string) {
   const all = getUsers().filter(x => x.id !== id);
   saveUsers(all);
+}
+
+
+// --- Payments Providers (Integrations) ---
+const PAYMENT_PROVIDERS_KEY = "cafe_payment_providers";
+
+export type PaymentProvider = {
+  id: string; // stable id
+  name: string; // display name
+  type: "MockPay" | "Stripe" | "PayPal" | "Custom";
+  enabled: boolean;
+  apiKey?: string;
+};
+
+const DEFAULT_PROVIDERS: PaymentProvider[] = [
+  { id: "mockpay", name: "MockPay", type: "MockPay", enabled: true },
+  { id: "stripe", name: "Stripe", type: "Stripe", enabled: false, apiKey: "" },
+  { id: "paypal", name: "PayPal", type: "PayPal", enabled: false, apiKey: "" },
+];
+
+export function getPaymentProviders(): PaymentProvider[] {
+  try {
+    const raw = localStorage.getItem(PAYMENT_PROVIDERS_KEY);
+    return raw ? (JSON.parse(raw) as PaymentProvider[]) : [...DEFAULT_PROVIDERS];
+  } catch {
+    return [...DEFAULT_PROVIDERS];
+  }
+}
+
+export function savePaymentProviders(list: PaymentProvider[]) {
+  localStorage.setItem(PAYMENT_PROVIDERS_KEY, JSON.stringify(list));
+}
+
+// --- Banking (Mock API + Reconciliation) ---
+const BANK_ACCOUNTS_KEY = "cafe_bank_accounts";
+const BANK_TRANSACTIONS_KEY = "cafe_bank_transactions";
+
+export type BankAccount = { id: string; name: string };
+export type BankTransaction = {
+  id: string;
+  at: string; // ISO date
+  accountId: string;
+  description: string;
+  amount: number; // positive = credit, negative = debit
+  matchedReceiptNo?: string; // if reconciled to a Sale receipt
+};
+
+export function getBankAccounts(): BankAccount[] {
+  try {
+    const raw = localStorage.getItem(BANK_ACCOUNTS_KEY);
+    return raw ? (JSON.parse(raw) as BankAccount[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveBankAccounts(list: BankAccount[]) {
+  localStorage.setItem(BANK_ACCOUNTS_KEY, JSON.stringify(list));
+}
+
+export function addBankAccount(acc: BankAccount) {
+  const all = getBankAccounts();
+  all.unshift(acc);
+  saveBankAccounts(all);
+}
+
+export function getBankTransactions(): BankTransaction[] {
+  try {
+    const raw = localStorage.getItem(BANK_TRANSACTIONS_KEY);
+    return raw ? (JSON.parse(raw) as BankTransaction[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveBankTransactions(list: BankTransaction[]) {
+  localStorage.setItem(BANK_TRANSACTIONS_KEY, JSON.stringify(list));
+}
+
+export function addBankTransactions(list: BankTransaction[]) {
+  const all = getBankTransactions();
+  const next = [...list, ...all];
+  saveBankTransactions(next);
+}
+
+export function reconcileBankTransaction(txId: string, receiptNo: string) {
+  const all = getBankTransactions();
+  const next = all.map(t => (t.id === txId ? { ...t, matchedReceiptNo: receiptNo } : t));
+  saveBankTransactions(next);
 }

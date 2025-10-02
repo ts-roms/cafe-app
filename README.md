@@ -37,6 +37,10 @@ All data is stored locally in your browser (localStorage) for simplicity. No bac
   - Invoices: add simple invoices (customer, amount, status) and list them.
   - Expenses: add expenses (category, note, amount) and list them.
   - Reports: summary cards for Sales Total, Paid Invoices, Expenses, and Net Income.
+  - Payments: configure mock providers (MockPay/Stripe/PayPal), enable/disable, save, and run a test $1 charge (mock).
+  - Banking: manage bank accounts (mock), import demo transactions, and reconcile transactions to receipts.
+  - Tax: view tax collected from sales, export CSV, and mark tax as filed (audit-only).
+  - Payroll: pick a date range, compute hours from Time logs per user, set hourly rates, and mark pay as paid (mock).
   Admin and Cashier have access; Staff does not.
 - Time: clock in/out, view your personal logs, attendance summary, and simple shift scheduling (admin can add shifts). Admin and Manager can view time in/out logs for Staff and Cashiers.
 
