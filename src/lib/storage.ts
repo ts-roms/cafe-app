@@ -81,6 +81,47 @@ export function saveTimeLogs(logs: TimeLog[]) {
   localStorage.setItem(TIME_KEY, JSON.stringify(logs));
 }
 
+// Time Off requests
+const TIME_OFF_KEY = "cafe_timeoff";
+export type TimeOffRequest = {
+  id: string;
+  userId: string;
+  userName: string;
+  userRole?: Role;
+  type: "vacation" | "sick" | "personal" | "unpaid" | "other";
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+  reason?: string;
+  status: "pending" | "approved" | "declined";
+  requestedAt: string; // ISO
+  decidedAt?: string; // ISO
+  decidedBy?: { id: string; name: string };
+};
+
+export function getTimeOffRequests(): TimeOffRequest[] {
+  try {
+    const raw = localStorage.getItem(TIME_OFF_KEY);
+    return raw ? (JSON.parse(raw) as TimeOffRequest[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveTimeOffRequests(list: TimeOffRequest[]) {
+  localStorage.setItem(TIME_OFF_KEY, JSON.stringify(list));
+}
+
+export function addTimeOffRequest(req: TimeOffRequest) {
+  const all = getTimeOffRequests();
+  all.unshift(req);
+  saveTimeOffRequests(all);
+}
+
+export function updateTimeOffRequest(req: TimeOffRequest) {
+  const all = getTimeOffRequests().map(r => (r.id === req.id ? req : r));
+  saveTimeOffRequests(all);
+}
+
 // Inventory helpers
 const CATEGORIES_KEY = "cafe_categories";
 export type Category = { id: string; name: string };

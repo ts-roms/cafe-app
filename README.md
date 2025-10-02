@@ -45,7 +45,7 @@ All data is stored locally in your browser (localStorage) for simplicity. No bac
   - Tax: view tax collected from sales, export CSV, and mark tax as filed (audit-only).
   - Payroll: pick a date range, compute hours from Time logs per user, set hourly rates, and mark pay as paid (mock).
   Admin and Cashier have access; Staff does not.
-- Time: clock in/out, view your personal logs, attendance summary, and simple shift scheduling (admin can add shifts). Admin and Manager can view time in/out logs for Staff and Cashiers.
+- Time: clock in/out, view your personal logs, attendance summary, and simple shift scheduling (admin can add shifts). Admin and Manager can view time in/out logs for Staff and Cashiers. Staff/Cashier can file Time Off requests; Manager/Admin can approve/decline and view team requests.
 
 ## RBAC
 
