@@ -538,6 +538,7 @@ export type UserRecord = {
   name: string;
   role: Role;
   hourlyRate?: number; // optional: used by Payroll calculations
+  birthday?: string; // optional: YYYY-MM-DD
 };
 
 export function getUsers(): UserRecord[] {

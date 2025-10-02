@@ -16,12 +16,14 @@ import {
   updateUser,
   deleteUser,
   type UserRecord,
+  getTimeOffRequests,
+  type TimeOffRequest,
 } from "@/lib/storage";
 import { ALL_PERMISSIONS, getRBACConfig, saveRBACConfig, type RBACConfig } from "@/lib/rbac";
 
 export default function AdminPage() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<"settings" | "audit" | "roles" | "users">("settings");
+  const [tab, setTab] = useState<"settings" | "audit" | "roles" | "users" | "calendar">("settings");
 
   // settings
   const [settings, setSettings] = useState<Settings>(getSettings());
@@ -34,15 +36,23 @@ export default function AdminPage() {
   const [newUserName, setNewUserName] = useState("");
   const [newUserRole, setNewUserRole] = useState<string>("cashier");
 
+  // time off for calendar
+  const [timeOff, setTimeOff] = useState<TimeOffRequest[]>([]);
+
   // roles/permissions (RBAC)
   const [rbac, setRbac] = useState<RBACConfig>(getRBACConfig());
   const [newRole, setNewRole] = useState("");
+
+  // calendar state
+  const [calYear, setCalYear] = useState<number>(new Date().getFullYear());
+  const [calMonth, setCalMonth] = useState<number>(new Date().getMonth());
 
   useEffect(() => {
     setSettings(getSettings());
     setAudit(getAuditLogs());
     setUsers(getUsers());
     setRbac(getRBACConfig());
+    setTimeOff(getTimeOffRequests());
   }, []);
 
   const save = (e: React.FormEvent) => {
@@ -123,6 +133,15 @@ export default function AdminPage() {
     addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "user:update", details: `${next.name} (${next.role})` });
   };
 
+  const onChangeUserBirthday = (id: string, birthday: string) => {
+    const rec: UserRecord | undefined = users.find(u => u.id === id);
+    if (!rec) return;
+    const next: UserRecord = { ...rec, birthday: birthday || undefined };
+    updateUser(next);
+    setUsers(cur => cur.map(u => (u.id === id ? next : u)));
+    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "user:update:birthday", details: `${next.name} -> ${birthday || ""}` });
+  };
+
   const onDeleteUser = (id: string) => {
     if (!confirm("Delete this user?")) return;
     const rec = users.find(u => u.id === id);
@@ -139,6 +158,7 @@ export default function AdminPage() {
           <button onClick={() => setTab("settings")} className={`px-3 py-1 rounded border ${tab === "settings" ? "bg-foreground text-background" : ""}`}>Settings</button>
           <button onClick={() => setTab("roles")} className={`px-3 py-1 rounded border ${tab === "roles" ? "bg-foreground text-background" : ""}`}>Roles</button>
           <button onClick={() => setTab("users")} className={`px-3 py-1 rounded border ${tab === "users" ? "bg-foreground text-background" : ""}`}>Users</button>
+          <button onClick={() => setTab("calendar")} className={`px-3 py-1 rounded border ${tab === "calendar" ? "bg-foreground text-background" : ""}`}>Calendar</button>
           <button onClick={() => setTab("audit")} className={`px-3 py-1 rounded border ${tab === "audit" ? "bg-foreground text-background" : ""}`}>Audit Logs</button>
         </div>
 
@@ -219,6 +239,7 @@ export default function AdminPage() {
                     <tr>
                       <th className="text-left p-2 border">Name</th>
                       <th className="text-left p-2 border">Role</th>
+                      <th className="text-left p-2 border">Birthday</th>
                       <th className="text-left p-2 border">Actions</th>
                     </tr>
                   </thead>
@@ -236,6 +257,9 @@ export default function AdminPage() {
                           </select>
                         </td>
                         <td className="p-2 border">
+                          <input type="date" value={u.birthday || ""} onChange={(e) => onChangeUserBirthday(u.id, e.target.value)} className="border rounded px-2 py-1 bg-transparent" />
+                        </td>
+                        <td className="p-2 border">
                           <button className="text-xs px-2 py-1 border rounded" onClick={() => onDeleteUser(u.id)}>Delete</button>
                         </td>
                       </tr>
@@ -244,6 +268,83 @@ export default function AdminPage() {
                 </table>
               </div>
             )}
+          </section>
+        )}
+
+        {tab === "calendar" && (
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Calendar</h2>
+              <div className="flex items-center gap-2">
+                <button className="px-2 py-1 border rounded" onClick={() => {
+                  let m = calMonth - 1; let y = calYear; if (m < 0) { m = 11; y -= 1; } setCalMonth(m); setCalYear(y);
+                }}>{"<"}</button>
+                <div className="min-w-32 text-center font-medium">{new Date(calYear, calMonth, 1).toLocaleString(undefined, { month: "long", year: "numeric" })}</div>
+                <button className="px-2 py-1 border rounded" onClick={() => {
+                  let m = calMonth + 1; let y = calYear; if (m > 11) { m = 0; y += 1; } setCalMonth(m); setCalYear(y);
+                }}>{">"}</button>
+                <button className="px-2 py-1 border rounded" onClick={() => { setUsers(getUsers()); setTimeOff(getTimeOffRequests()); }}>Refresh</button>
+              </div>
+            </div>
+            {(() => {
+              const first = new Date(calYear, calMonth, 1);
+              const startDow = first.getDay();
+              const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+              const cells: (Date|null)[] = [];
+              for (let i=0;i<startDow;i++) cells.push(null);
+              for (let d=1; d<=daysInMonth; d++) cells.push(new Date(calYear, calMonth, d));
+              const weeks: (Date|null)[][] = [];
+              for (let i=0;i<cells.length;i+=7) weeks.push(cells.slice(i, i+7));
+
+              const md = (d: Date) => { const m = (d.getMonth()+1).toString().padStart(2,'0'); const dd = d.getDate().toString().padStart(2,'0'); return `${m}-${dd}`; };
+              const ymd = (d: Date) => d.toISOString().slice(0,10);
+
+              const birthdayEvents = (d: Date) => users.filter(u => u.birthday && (u.birthday as string).slice(5) === md(d)).map(u => ({ type: 'birthday' as const, label: `${u.name}` }));
+              const leaveEvents = (d: Date) => {
+                const key = ymd(d);
+                return timeOff.filter(r => r.startDate <= key && key <= r.endDate).map(r => ({ type: r.status, label: `${r.userName} (${r.type})`, status: r.status }));
+              };
+
+              const DayCell = ({ d }: { d: Date }) => {
+                const bdays = birthdayEvents(d);
+                const leaves = leaveEvents(d);
+                return (
+                  <div className="h-28 p-2 border rounded flex flex-col gap-1">
+                    <div className="text-xs font-medium">{d.getDate()}</div>
+                    <div className="flex-1 overflow-auto space-y-1">
+                      {bdays.map((e, i) => (
+                        <div key={`b${i}`} className="text-xs px-1 py-0.5 rounded bg-pink-200 text-pink-900 dark:bg-pink-900/30 dark:text-pink-200" title="Birthday">🎂 {e.label}</div>
+                      ))}
+                      {leaves.map((e, i) => (
+                        <div key={`l${i}`} className={`text-xs px-1 py-0.5 rounded ${e.status === 'approved' ? 'bg-green-200 text-green-900 dark:bg-green-900/30 dark:text-green-200' : e.status === 'pending' ? 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/30 dark:text-yellow-200' : 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100'}`} title="Time Off">
+                          🏖️ {e.label}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              };
+
+              return (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-7 gap-2 text-xs opacity-70">
+                    {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (<div key={d} className="p-1">{d}</div>))}
+                  </div>
+                  <div className="grid grid-cols-7 gap-2">
+                    {weeks.map((row, idx) => (
+                      <React.Fragment key={idx}>
+                        {row.map((cell, j) => cell ? <DayCell key={j} d={cell} /> : <div key={j} className="h-28 p-2 border rounded bg-black/5 dark:bg-white/10"></div>)}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-3 text-xs opacity-80">
+                    <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-pink-400"></span> Birthday</span>
+                    <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-green-400"></span> Leave (Approved)</span>
+                    <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-yellow-400"></span> Leave (Pending)</span>
+                  </div>
+                </div>
+              );
+            })()}
           </section>
         )}
 
@@ -306,6 +407,6 @@ function toCSV(rows: AuditEntry[]): string {
 
 function safe(s: string): string {
   const needsQuote = /[",\n]/.test(s);
-  let v = s.replaceAll('"', '""');
+  const v = s.replaceAll('"', '""');
   return needsQuote ? `"${v}"` : v;
 }
