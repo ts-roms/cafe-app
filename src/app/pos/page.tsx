@@ -47,8 +47,20 @@ export default function POSPage() {
   const [appliedPromoId, setAppliedPromoId] = useState<string>("");
   const [held, setHeld] = useState<HeldOrder[]>([]);
 
+  const loadInventory = async () => {
+    try {
+      const res = await fetch("/api/inventory");
+      if (!res.ok) throw new Error("bad");
+      const data = await res.json();
+      setInventory(Array.isArray(data) ? data : getInventory());
+    } catch {
+      // Fallback to local storage helpers if Mirage is not running
+      setInventory(getInventory());
+    }
+  };
+
   useEffect(() => {
-    setInventory(getInventory());
+    loadInventory();
     setCategories(getCategories());
     setRecent(getSales().slice(0, 5));
     const s = getSettings();
@@ -60,7 +72,7 @@ export default function POSPage() {
   // Auto-refresh inventory and categories from Inventory module when window gains focus (e.g., after editing products)
   useEffect(() => {
     const onFocus = () => {
-      setInventory(getInventory());
+      loadInventory();
       setCategories(getCategories());
     };
     if (typeof window !== "undefined") {
@@ -282,9 +294,9 @@ export default function POSPage() {
             <h1 className="text-2xl font-semibold">Catalog</h1>
             <button
               className="text-sm px-2 py-1 border rounded"
-              onClick={() => setInventory(getInventory())}
+              onClick={() => loadInventory()}
               title="Reload products from Inventory"
-            >Refresh from Inventory</button>
+            >Refresh from Inventory (API)</button>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {(() => {

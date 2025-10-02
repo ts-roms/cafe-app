@@ -10,6 +10,14 @@ A minimal Next.js app that demonstrates:
 
 All data is stored locally in your browser (localStorage) for simplicity. No backend required.
 
+In development, a MirageJS mock API boots in the browser and serves data under /api, proxying to the same localStorage-backed data. Endpoints include:
+- GET/PUT /api/inventory
+- GET/POST /api/sales
+- GET/POST/PUT/DELETE /api/users
+- GET/PUT /api/rbac
+
+The POS catalog fetches inventory from this mock API. This lets you evolve toward a real API without changing pages significantly.
+
 ## Getting Started
 
 1. Install dependencies (if not already):
