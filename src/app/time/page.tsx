@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { RequirePermission } from "@/components/Guard";
 import { useAuth } from "@/context/AuthContext";
-import { getTimeLogs, saveTimeLogs, getShifts, saveShifts, addShift, addAudit, getTimeOffRequests, saveTimeOffRequests, addTimeOffRequest, updateTimeOffRequest, type TimeLog, type Shift, type TimeOffRequest } from "@/lib/storage";
+import { getTimeLogs, saveTimeLogs, getShifts, saveShifts, addShift, addAudit, getTimeOffRequests, saveTimeOffRequests, addTimeOffRequest, updateTimeOffRequest, getUsers, updateUser, type UserRecord, type TimeLog, type Shift, type TimeOffRequest } from "@/lib/storage";
 
 function ymd(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -36,6 +36,8 @@ export default function TimePage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [timeOff, setTimeOff] = useState<TimeOffRequest[]>([]);
   const [tab, setTab] = useState<"logs" | "attendance" | "shifts" | "team" | "timeoff" | "timeoffTeam">("logs");
+  const [directory, setDirectory] = useState<UserRecord[]>([]);
+  const meRecord = useMemo(() => directory.find(u => u.id === user?.id), [directory, user?.id]);
 
   // shift form (admin)
   const [empName, setEmpName] = useState("");
@@ -48,11 +50,13 @@ export default function TimePage() {
   const [toStart, setToStart] = useState<string>(ymd(new Date()));
   const [toEnd, setToEnd] = useState<string>(ymd(new Date()));
   const [toReason, setToReason] = useState<string>("");
+  const [toPaid, setToPaid] = useState<boolean>(true);
 
   useEffect(() => {
     setLogs(getTimeLogs());
     setShifts(getShifts());
     setTimeOff(getTimeOffRequests());
+    setDirectory(getUsers());
   }, []);
 
   const myOpenLog = useMemo(() => logs.find((l) => l.userId === user?.id && !l.clockOut), [logs, user?.id]);
@@ -197,6 +201,13 @@ export default function TimePage() {
     setEmpName("");
   };
 
+  function daysBetweenInclusive(a: string, b: string): number {
+    const d1 = new Date(a + 'T00:00:00');
+    const d2 = new Date(b + 'T00:00:00');
+    const ms = d2.getTime() - d1.getTime();
+    return Math.floor(ms / 86400000) + 1;
+  }
+
   const submitTimeOff = (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -208,6 +219,7 @@ export default function TimePage() {
       alert("End date cannot be before start date");
       return;
     }
+    const days = daysBetweenInclusive(toStart, toEnd);
     const req: TimeOffRequest = {
       id: crypto.randomUUID(),
       userId: user.id,
@@ -217,12 +229,14 @@ export default function TimePage() {
       startDate: toStart,
       endDate: toEnd,
       reason: toReason || undefined,
+      paid: toType !== 'unpaid' && toPaid ? true : false,
+      days,
       status: "pending",
       requestedAt: new Date().toISOString(),
     };
     addTimeOffRequest(req);
     setTimeOff(cur => [req, ...cur]);
-    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: { id: user.id, name: user.name }, action: "timeoff:request", details: `${req.type} ${req.startDate}..${req.endDate}` });
+    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: { id: user.id, name: user.name }, action: "timeoff:request", details: `${req.type}${req.paid ? ' (paid)' : ' (unpaid)'} ${req.startDate}..${req.endDate} ${days}d` });
     setToReason("");
   };
 
@@ -230,10 +244,32 @@ export default function TimePage() {
     if (!user || !isManagerOrAdmin) return;
     const rec = timeOff.find(r => r.id === id);
     if (!rec) return;
-    const updated: TimeOffRequest = { ...rec, status: decision, decidedAt: new Date().toISOString(), decidedBy: { id: user.id, name: user.name } };
+    let updated: TimeOffRequest = { ...rec, status: decision, decidedAt: new Date().toISOString(), decidedBy: { id: user.id, name: user.name } };
+
+    if (decision === "approved" && rec.paid && (rec.type === 'vacation' || rec.type === 'sick' || rec.type === 'personal')) {
+      const days = rec.days && rec.days > 0 ? rec.days : daysBetweenInclusive(rec.startDate, rec.endDate);
+      const emp = getUsers().find(u => u.id === rec.userId);
+      if (emp) {
+        const key = rec.type as 'vacation'|'sick'|'personal';
+        const avail = emp.leaveCredits?.[key] || 0;
+        if (avail >= days) {
+          const nextCredits = { ...(emp.leaveCredits || {}), [key]: Math.max(0, avail - days) } as UserRecord['leaveCredits'];
+          const nextEmp: UserRecord = { ...emp, leaveCredits: nextCredits } as UserRecord;
+          updateUser(nextEmp);
+          setDirectory(cur => cur.map(u => u.id === nextEmp.id ? nextEmp : u));
+          updated.creditDeducted = days;
+          addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: { id: user.id, name: user.name }, action: "timeoff:deduct:credits", details: `${emp.name} ${key} -${days}d` });
+        } else {
+          alert(`Insufficient ${key} credits for ${emp.name}. Approving as unpaid.`);
+          updated.paid = false;
+          updated.creditDeducted = 0;
+        }
+      }
+    }
+
     updateTimeOffRequest(updated);
     setTimeOff(cur => cur.map(r => (r.id === id ? updated : r)));
-    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: { id: user.id, name: user.name }, action: decision === "approved" ? "timeoff:approve" : "timeoff:decline", details: `${rec.userName} ${rec.startDate}..${rec.endDate}` });
+    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: { id: user.id, name: user.name }, action: decision === "approved" ? "timeoff:approve" : "timeoff:decline", details: `${rec.userName} ${rec.startDate}..${rec.endDate} ${updated.paid ? '(paid)' : '(unpaid)'}` });
   };
 
   const myVisibleShifts = useMemo(() => {
@@ -377,8 +413,9 @@ export default function TimePage() {
         {tab === "timeoff" && (
           <section className="space-y-4">
             <h2 className="text-xl font-semibold">My Time Off</h2>
+            <div className="text-sm opacity-80">My Leave Credits: V {meRecord?.leaveCredits?.vacation ?? 0} · S {meRecord?.leaveCredits?.sick ?? 0} · P {meRecord?.leaveCredits?.personal ?? 0}</div>
             <form onSubmit={submitTimeOff} className="grid sm:grid-cols-6 gap-2 p-3 border rounded">
-              <select value={toType} onChange={e => setToType(e.target.value as TimeOffRequest["type"])} className="border rounded px-3 py-2 bg-transparent sm:col-span-2">
+              <select value={toType} onChange={e => { const t = e.target.value as TimeOffRequest["type"]; setToType(t); if (t === 'unpaid') setToPaid(false); }} className="border rounded px-3 py-2 bg-transparent sm:col-span-2">
                 <option value="vacation">Vacation</option>
                 <option value="sick">Sick</option>
                 <option value="personal">Personal</option>
@@ -387,6 +424,9 @@ export default function TimePage() {
               </select>
               <input type="date" value={toStart} onChange={e => setToStart(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-2" />
               <input type="date" value={toEnd} onChange={e => setToEnd(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-2" />
+              <label className="text-sm flex items-center gap-2 sm:col-span-3">
+                <input type="checkbox" checked={toType !== 'unpaid' && toPaid} onChange={e => setToPaid(e.target.checked)} disabled={toType === 'unpaid'} /> Use Credits (Paid)
+              </label>
               <input value={toReason} onChange={e => setToReason(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-6" placeholder="Reason (optional)" />
               <button className="px-4 py-2 rounded bg-foreground text-background sm:col-span-6">Submit Request</button>
             </form>
@@ -398,11 +438,12 @@ export default function TimePage() {
                     <th className="text-left p-2 border">Dates</th>
                     <th className="text-left p-2 border">Reason</th>
                     <th className="text-left p-2 border">Status</th>
+                    <th className="text-left p-2 border">Paid</th>
                   </tr>
                 </thead>
                 <tbody>
                   {myTimeOff.length === 0 ? (
-                    <tr><td className="p-2 border" colSpan={4}>No time off requests yet.</td></tr>
+                    <tr><td className="p-2 border" colSpan={5}>No time off requests yet.</td></tr>
                   ) : (
                     myTimeOff.map(r => (
                       <tr key={r.id} className="odd:bg-black/0 even:bg-black/5 dark:even:bg-white/5">
@@ -410,6 +451,7 @@ export default function TimePage() {
                         <td className="p-2 border">{r.startDate} .. {r.endDate}</td>
                         <td className="p-2 border">{r.reason || "—"}</td>
                         <td className="p-2 border">{r.status}{r.decidedBy ? ` by ${r.decidedBy.name}` : ""}</td>
+                        <td className="p-2 border">{r.paid ? "Paid" : "Unpaid"}</td>
                       </tr>
                     ))
                   )}
@@ -434,6 +476,7 @@ export default function TimePage() {
                     <th className="text-left p-2 border">Dates</th>
                     <th className="text-left p-2 border">Reason</th>
                     <th className="text-left p-2 border">Status</th>
+                    <th className="text-left p-2 border">Paid</th>
                     <th className="text-left p-2 border">Action</th>
                   </tr>
                 </thead>
@@ -441,7 +484,7 @@ export default function TimePage() {
                   {(() => {
                     const rows = [...timeOff].sort((a,b) => (a.status === "pending" ? -1 : 1) - (b.status === "pending" ? -1 : 1));
                     return rows.length === 0 ? (
-                      <tr><td className="p-2 border" colSpan={7}>No time off requests.</td></tr>
+                      <tr><td className="p-2 border" colSpan={8}>No time off requests.</td></tr>
                     ) : (
                       rows.map(r => (
                         <tr key={r.id} className="odd:bg-black/0 even:bg-black/5 dark:even:bg-white/5">
@@ -451,6 +494,7 @@ export default function TimePage() {
                           <td className="p-2 border">{r.startDate} .. {r.endDate}</td>
                           <td className="p-2 border">{r.reason || "—"}</td>
                           <td className="p-2 border">{r.status}</td>
+                          <td className="p-2 border">{r.paid ? "Paid" : "Unpaid"}</td>
                           <td className="p-2 border">
                             {r.status === "pending" ? (
                               <div className="flex gap-2">

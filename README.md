@@ -56,7 +56,7 @@ This project uses Jest for unit testing.
   - Tax: view tax collected from sales, export CSV, and mark tax as filed (audit-only).
   - Payroll: pick a date range, compute hours from Time logs per user, set hourly rates, and mark pay as paid (mock).
   Admin and Cashier have access; Staff does not.
-- Time: clock in/out, view your personal logs, attendance summary, and simple shift scheduling (admin can add shifts). Admin and Manager can view time in/out logs for Staff and Cashiers. Staff/Cashier can file Time Off requests; Manager/Admin can approve/decline and view team requests.
+- Time: clock in/out, view your personal logs, attendance summary, and simple shift scheduling (admin can add shifts). Admin and Manager can view time in/out logs for Staff and Cashiers. Staff/Cashier can file Time Off requests (paid using leave credits or unpaid); Manager/Admin can approve/decline and view team requests. Admins can manage employee leave credits (Vacation/Sick/Personal) in Admin > Users; approving paid leave deducts credits automatically (falls back to unpaid if insufficient).
   - Time Kiosk: Visit /kiosk to clock in/out by entering your employee code. No login required. Admins can set codes in Admin > Users.
 
 ## RBAC

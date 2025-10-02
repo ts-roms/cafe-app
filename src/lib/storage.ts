@@ -102,6 +102,10 @@ export type TimeOffRequest = {
   startDate: string; // YYYY-MM-DD
   endDate: string;   // YYYY-MM-DD
   reason?: string;
+  // Paid/unpaid handling
+  paid?: boolean; // true if using leave credits; false for unpaid
+  days?: number; // inclusive days in the request
+  creditDeducted?: number; // number of days deducted from credits when approved (for audit)
   status: "pending" | "approved" | "declined";
   requestedAt: string; // ISO
   decidedAt?: string; // ISO
@@ -594,6 +598,12 @@ export type UserRecord = {
   password?: string; // plaintext for demo; do NOT use in production
   hourlyRate?: number; // optional: used by Payroll calculations
   birthday?: string; // optional: YYYY-MM-DD
+  // Leave credits (days) that admin can manage
+  leaveCredits?: {
+    vacation?: number;
+    sick?: number;
+    personal?: number;
+  };
 };
 
 export function getUsers(): UserRecord[] {

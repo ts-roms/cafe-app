@@ -262,6 +262,7 @@ export default function AdminPage() {
                       <th className="text-left p-2 border">Code</th>
                       <th className="text-left p-2 border">Role</th>
                       <th className="text-left p-2 border">Birthday</th>
+                      <th className="text-left p-2 border">Leave Credits (V/S/P)</th>
                       <th className="text-left p-2 border">Password</th>
                       <th className="text-left p-2 border">Actions</th>
                     </tr>
@@ -301,6 +302,57 @@ export default function AdminPage() {
                         </td>
                         <td className="p-2 border">
                           <input type="date" value={u.birthday || ""} onChange={(e) => onChangeUserBirthday(u.id, e.target.value)} className="border rounded px-2 py-1 bg-transparent" />
+                        </td>
+                        <td className="p-2 border">
+                          <div className="flex items-center gap-1">
+                            <input
+                              value={String(u.leaveCredits?.vacation ?? 0)}
+                              onChange={(e) => {
+                                const rec = users.find(x => x.id === u.id);
+                                if (!rec) return;
+                                const val = parseFloat(e.target.value) || 0;
+                                const next = { ...rec, leaveCredits: { ...rec.leaveCredits, vacation: Math.max(0, val) } } as UserRecord;
+                                updateUser(next);
+                                setUsers(cur => cur.map(x => x.id === u.id ? next : x));
+                                addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "user:update:leave:vacation", details: rec.name });
+                              }}
+                              className="w-14 border rounded px-2 py-1 bg-transparent text-right"
+                              inputMode="decimal"
+                              title="Vacation credits"
+                            />
+                            <span className="opacity-60">/</span>
+                            <input
+                              value={String(u.leaveCredits?.sick ?? 0)}
+                              onChange={(e) => {
+                                const rec = users.find(x => x.id === u.id);
+                                if (!rec) return;
+                                const val = parseFloat(e.target.value) || 0;
+                                const next = { ...rec, leaveCredits: { ...rec.leaveCredits, sick: Math.max(0, val) } } as UserRecord;
+                                updateUser(next);
+                                setUsers(cur => cur.map(x => x.id === u.id ? next : x));
+                                addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "user:update:leave:sick", details: rec.name });
+                              }}
+                              className="w-14 border rounded px-2 py-1 bg-transparent text-right"
+                              inputMode="decimal"
+                              title="Sick credits"
+                            />
+                            <span className="opacity-60">/</span>
+                            <input
+                              value={String(u.leaveCredits?.personal ?? 0)}
+                              onChange={(e) => {
+                                const rec = users.find(x => x.id === u.id);
+                                if (!rec) return;
+                                const val = parseFloat(e.target.value) || 0;
+                                const next = { ...rec, leaveCredits: { ...rec.leaveCredits, personal: Math.max(0, val) } } as UserRecord;
+                                updateUser(next);
+                                setUsers(cur => cur.map(x => x.id === u.id ? next : x));
+                                addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "user:update:leave:personal", details: rec.name });
+                              }}
+                              className="w-14 border rounded px-2 py-1 bg-transparent text-right"
+                              inputMode="decimal"
+                              title="Personal credits"
+                            />
+                          </div>
                         </td>
                         <td className="p-2 border">
                           <input type="password" placeholder="Set new password" className="border rounded px-2 py-1 bg-transparent w-full" onKeyDown={(e) => {
