@@ -31,15 +31,15 @@ export type Sale = {
   customer?: { id: string; name: string };
 };
 
-export type InventoryItem = { id: string; name: string; price: number; stock: number; barcode?: string };
+export type InventoryItem = { id: string; name: string; price: number; stock: number; barcode?: string; enabled?: boolean };
 
 // Seed inventory if missing
 const DEFAULT_INVENTORY: InventoryItem[] = [
-  { id: "coffee", name: "Coffee", price: 3, stock: 20, barcode: "0001" },
-  { id: "latte", name: "Latte", price: 4, stock: 20, barcode: "0002" },
-  { id: "tea", name: "Tea", price: 2.5, stock: 20, barcode: "0003" },
-  { id: "sandwich", name: "Sandwich", price: 5.5, stock: 20, barcode: "0004" },
-  { id: "cake", name: "Cake Slice", price: 3.25, stock: 20, barcode: "0005" },
+  { id: "coffee", name: "Coffee", price: 3, stock: 20, barcode: "0001", enabled: true },
+  { id: "latte", name: "Latte", price: 4, stock: 20, barcode: "0002", enabled: true },
+  { id: "tea", name: "Tea", price: 2.5, stock: 20, barcode: "0003", enabled: true },
+  { id: "sandwich", name: "Sandwich", price: 5.5, stock: 20, barcode: "0004", enabled: true },
+  { id: "cake", name: "Cake Slice", price: 3.25, stock: 20, barcode: "0005", enabled: true },
 ];
 
 import type { Role } from "@/lib/rbac";
@@ -102,7 +102,7 @@ export function findInventoryByBarcode(code: string): InventoryItem | undefined 
   const trimmed = (code || "").trim();
   if (!trimmed) return undefined;
   const inv = getInventory();
-  return inv.find((i) => i.barcode && i.barcode === trimmed);
+  return inv.find((i) => i.barcode && i.barcode === trimmed && i.enabled !== false);
 }
 
 export function adjustInventoryForSale(items: SaleItem[]): InventoryItem[] {
@@ -114,6 +114,13 @@ export function adjustInventoryForSale(items: SaleItem[]): InventoryItem[] {
     return { ...p, stock: newStock };
   });
   saveInventory(updated);
+  // Also reduce stock from Default warehouse if multi-warehouse tracking is enabled
+  try {
+    const wh = ensureDefaultWarehouse();
+    for (const it of items) {
+      adjustStock(wh.id, it.id, -it.qty);
+    }
+  } catch {}
   return updated;
 }
 
@@ -588,4 +595,246 @@ export function reconcileBankTransaction(txId: string, receiptNo: string) {
   const all = getBankTransactions();
   const next = all.map(t => (t.id === txId ? { ...t, matchedReceiptNo: receiptNo } : t));
   saveBankTransactions(next);
+}
+
+
+// --- Inventory Module Extensions: Warehouses, Purchasing/Receiving, Serial/Expiry, Adjustments ---
+const WAREHOUSES_KEY = "cafe_warehouses";
+const STOCK_KEY = "cafe_stock_levels";
+const PURCHASES_KEY = "cafe_purchases";
+const SERIALS_KEY = "cafe_serial_batches";
+const ADJUSTMENTS_KEY = "cafe_inventory_adjustments";
+
+export type Warehouse = { id: string; name: string };
+
+export type StockLevel = { itemId: string; warehouseId: string; qty: number };
+
+export type SerialBatch = {
+  id: string;
+  itemId: string;
+  warehouseId: string;
+  qty: number;
+  serial?: string;
+  lot?: string;
+  expiry?: string; // ISO date-only
+  at: string; // received date ISO
+  poId?: string;
+};
+
+export type PurchaseItem = { itemId: string; qty: number; cost: number; warehouseId: string };
+export type PurchaseOrder = {
+  id: string;
+  at: string; // created ISO
+  supplier: string;
+  items: PurchaseItem[];
+  status: "open" | "received";
+};
+
+export type InventoryAdjustment = {
+  id: string;
+  at: string;
+  reason?: string;
+  itemId: string;
+  warehouseId: string;
+  delta: number; // + increase, - decrease
+};
+
+export function getWarehouses(): Warehouse[] {
+  try {
+    const raw = localStorage.getItem(WAREHOUSES_KEY);
+    const list = raw ? (JSON.parse(raw) as Warehouse[]) : [];
+    if (list.length === 0) {
+      const def = [{ id: "wh-default", name: "Default" }];
+      localStorage.setItem(WAREHOUSES_KEY, JSON.stringify(def));
+      return def;
+    }
+    return list;
+  } catch {
+    return [{ id: "wh-default", name: "Default" }];
+  }
+}
+
+export function saveWarehouses(list: Warehouse[]) {
+  localStorage.setItem(WAREHOUSES_KEY, JSON.stringify(list));
+}
+
+export function addWarehouse(wh: Warehouse) {
+  const all = getWarehouses();
+  const next = [wh, ...all];
+  saveWarehouses(next);
+}
+
+export function ensureDefaultWarehouse(): Warehouse {
+  const all = getWarehouses();
+  const found = all.find(w => w.id === "wh-default");
+  if (found) return found;
+  const def = { id: "wh-default", name: "Default" } as Warehouse;
+  addWarehouse(def);
+  return def;
+}
+
+export function getStockLevels(): StockLevel[] {
+  try {
+    const raw = localStorage.getItem(STOCK_KEY);
+    return raw ? (JSON.parse(raw) as StockLevel[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveStockLevels(list: StockLevel[]) {
+  localStorage.setItem(STOCK_KEY, JSON.stringify(list));
+}
+
+export function getStockFor(itemId: string, warehouseId: string): number {
+  const levels = getStockLevels();
+  return levels.find(s => s.itemId === itemId && s.warehouseId === warehouseId)?.qty || 0;
+}
+
+export function setStockLevel(warehouseId: string, itemId: string, qty: number) {
+  const levels = getStockLevels();
+  let updated = false;
+  const next = levels.map(s => {
+    if (s.itemId === itemId && s.warehouseId === warehouseId) {
+      updated = true;
+      return { ...s, qty };
+    }
+    return s;
+  });
+  if (!updated) next.push({ itemId, warehouseId, qty });
+  saveStockLevels(next);
+  syncInventoryTotals();
+}
+
+export function adjustStock(warehouseId: string, itemId: string, delta: number) {
+  const cur = getStockFor(itemId, warehouseId);
+  const nextQty = Math.max(0, cur + delta);
+  setStockLevel(warehouseId, itemId, nextQty);
+}
+
+export function totalStockByItem(itemId: string): number {
+  const levels = getStockLevels();
+  return levels.filter(s => s.itemId === itemId).reduce((t, s) => t + s.qty, 0);
+}
+
+function syncInventoryTotals() {
+  // Keep the existing INVENTORY_KEY in sync for compatibility with POS
+  const inv = getInventory();
+  const next = inv.map(p => ({ ...p, stock: totalStockByItem(p.id) }));
+  saveInventory(next);
+}
+
+export function getPurchases(): PurchaseOrder[] {
+  try {
+    const raw = localStorage.getItem(PURCHASES_KEY);
+    return raw ? (JSON.parse(raw) as PurchaseOrder[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function savePurchases(list: PurchaseOrder[]) {
+  localStorage.setItem(PURCHASES_KEY, JSON.stringify(list));
+}
+
+export function addPurchase(po: PurchaseOrder) {
+  const all = getPurchases();
+  all.unshift(po);
+  savePurchases(all);
+}
+
+export function getSerialBatches(): SerialBatch[] {
+  try {
+    const raw = localStorage.getItem(SERIALS_KEY);
+    return raw ? (JSON.parse(raw) as SerialBatch[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveSerialBatches(list: SerialBatch[]) {
+  localStorage.setItem(SERIALS_KEY, JSON.stringify(list));
+}
+
+export function addSerialBatches(list: SerialBatch[]) {
+  const all = getSerialBatches();
+  saveSerialBatches([...list, ...all]);
+}
+
+export function receivePurchase(poId: string, batches?: SerialBatch[]) {
+  const all = getPurchases();
+  const po = all.find(p => p.id === poId);
+  if (!po || po.status === "received") return;
+  // Update stock per item/warehouse
+  for (const it of po.items) {
+    adjustStock(it.warehouseId, it.itemId, it.qty);
+  }
+  if (batches && batches.length) addSerialBatches(batches);
+  // Mark received
+  const next = all.map(p => (p.id === poId ? { ...p, status: "received" } : p));
+  savePurchases(next);
+  // Post journal entry: Dr Inventory, Cr Cash
+  try {
+    const total = po.items.reduce((t, i) => t + i.cost * i.qty, 0);
+    const settings = getSettings();
+    const entry: JournalEntry = {
+      id: crypto.randomUUID(),
+      at: new Date().toISOString(),
+      memo: `PO Receive ${po.supplier}`,
+      currency: settings.currency,
+      rateToBase: 1,
+      lines: [
+        { accountId: "inventory", debit: round2(total), credit: 0 },
+        { accountId: "cash", debit: 0, credit: round2(total) },
+      ],
+    };
+    addJournal(entry);
+  } catch {}
+}
+
+export function getAdjustments(): InventoryAdjustment[] {
+  try {
+    const raw = localStorage.getItem(ADJUSTMENTS_KEY);
+    return raw ? (JSON.parse(raw) as InventoryAdjustment[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveAdjustments(list: InventoryAdjustment[]) {
+  localStorage.setItem(ADJUSTMENTS_KEY, JSON.stringify(list));
+}
+
+function getUnitCost(itemId: string): number {
+  const inv = getInventory();
+  const item = inv.find(p => p.id === itemId);
+  // Prefer explicit cost if present, else fallback to price, else 0
+  return (item as any)?.cost || item?.price || 0;
+}
+
+export function applyAdjustment(adj: InventoryAdjustment) {
+  const all = getAdjustments();
+  all.unshift(adj);
+  saveAdjustments(all);
+  adjustStock(adj.warehouseId, adj.itemId, adj.delta);
+  // Journal: positive -> Dr Inventory / Cr COGS; negative -> Dr COGS / Cr Inventory
+  try {
+    const amt = Math.abs(adj.delta) * getUnitCost(adj.itemId);
+    if (amt > 0) {
+      const settings = getSettings();
+      const positive = adj.delta > 0;
+      const lines: JournalLine[] = positive
+        ? [ { accountId: "inventory", debit: round2(amt), credit: 0 }, { accountId: "cogs", debit: 0, credit: round2(amt) } ]
+        : [ { accountId: "cogs", debit: round2(amt), credit: 0 }, { accountId: "inventory", debit: 0, credit: round2(amt) } ];
+      const entry: JournalEntry = {
+        id: crypto.randomUUID(),
+        at: adj.at,
+        memo: `Inventory Adjust ${adj.reason || ""}`,
+        currency: settings.currency,
+        rateToBase: 1,
+        lines,
+      };
+      addJournal(entry);
+    }
+  } catch {}
 }

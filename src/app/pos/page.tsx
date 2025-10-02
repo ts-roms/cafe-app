@@ -227,7 +227,7 @@ export default function POSPage() {
         <section>
           <h1 className="text-2xl font-semibold mb-3">Catalog</h1>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {inventory.map((p) => {
+            {inventory.filter(p => p.enabled !== false).map((p) => {
               const out = p.stock <= 0;
               return (
                 <button
