@@ -580,6 +580,10 @@ export type UserRecord = {
   id: string;
   name: string;
   role: Role;
+  // New auth fields (demo-only; stored in localStorage)
+  username?: string; // unique username for login
+  code?: string; // optional employee code
+  password?: string; // plaintext for demo; do NOT use in production
   hourlyRate?: number; // optional: used by Payroll calculations
   birthday?: string; // optional: YYYY-MM-DD
 };
@@ -587,7 +591,21 @@ export type UserRecord = {
 export function getUsers(): UserRecord[] {
   try {
     const raw = localStorage.getItem(USERS_KEY);
-    return raw ? (JSON.parse(raw) as UserRecord[]) : [];
+    let list: UserRecord[] = raw ? (JSON.parse(raw) as UserRecord[]) : [];
+    // Seed a default admin user for first-time setup if no users exist
+    if (list.length === 0) {
+      const admin: UserRecord = {
+        id: crypto.randomUUID(),
+        name: "Administrator",
+        role: "admin" as Role,
+        username: "admin",
+        code: "0000",
+        password: "admin",
+      };
+      list = [admin];
+      try { localStorage.setItem(USERS_KEY, JSON.stringify(list)); } catch {}
+    }
+    return list;
   } catch {
     return [];
   }

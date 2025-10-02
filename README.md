@@ -29,7 +29,7 @@ This project uses Jest for unit testing.
 
 ## Features
 
-- Login (mock): pick a role and optional display name. Stored in localStorage.
+- Login: username/password based. Create users in Admin > Users (username, code, password). Default admin on first run: admin/admin.
 - POS:
   - Access rule: Cashiers must time in before using POS.
   - Inventory: stock-aware catalog that prevents overselling. Seeded with sample items.

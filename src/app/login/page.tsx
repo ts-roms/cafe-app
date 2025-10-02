@@ -2,40 +2,41 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import type { Role } from "@/lib/rbac";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { signIn } = useAuth();
-  const [role, setRole] = useState<Role>("cashier");
-  const [name, setName] = useState("");
+  const { signInWithCredentials } = useAuth();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string>("");
 
   const doLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    signIn(name || role.toUpperCase(), role);
+    setError("");
+    const ok = signInWithCredentials(username, password);
+    if (!ok) {
+      setError("Invalid username or password");
+      return;
+    }
     router.push("/");
   };
 
   return (
     <div className="max-w-md mx-auto">
-      <h1 className="text-2xl font-semibold mb-4">Login (Demo)</h1>
+      <h1 className="text-2xl font-semibold mb-4">Login</h1>
       <form onSubmit={doLogin} className="space-y-4 p-4 border rounded">
         <div>
-          <label className="block text-sm mb-1">Display Name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} className="w-full border rounded px-3 py-2 bg-transparent" placeholder="Optional" />
+          <label className="block text-sm mb-1">Username</label>
+          <input value={username} onChange={(e) => setUsername(e.target.value)} className="w-full border rounded px-3 py-2 bg-transparent" placeholder="Enter username" autoComplete="username" />
         </div>
         <div>
-          <label className="block text-sm mb-1">Role</label>
-          <select value={role} onChange={(e) => setRole(e.target.value as Role)} className="w-full border rounded px-3 py-2 bg-transparent">
-            <option value="admin">Admin</option>
-            <option value="manager">Manager</option>
-            <option value="cashier">Cashier</option>
-            <option value="staff">Staff</option>
-          </select>
+          <label className="block text-sm mb-1">Password</label>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full border rounded px-3 py-2 bg-transparent" placeholder="Enter password" autoComplete="current-password" />
         </div>
-        <button className="px-4 py-2 rounded bg-foreground text-background">Login</button>
+        {error && <div className="text-sm text-red-600">{error}</div>}
+        <button className="px-4 py-2 rounded bg-foreground text-background w-full">Sign In</button>
       </form>
-      <p className="text-xs opacity-70 mt-3">This is a mock login that stores your choice in localStorage.</p>
+      <p className="text-xs opacity-70 mt-3">Hint: default admin is username "admin" with password "admin" on first run.</p>
     </div>
   );
 }

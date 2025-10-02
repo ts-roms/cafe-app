@@ -39,6 +39,9 @@ export default function AdminPage() {
   // users
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [newUserName, setNewUserName] = useState("");
+  const [newUserUsername, setNewUserUsername] = useState("");
+  const [newUserCode, setNewUserCode] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserRole, setNewUserRole] = useState<string>("cashier");
 
   // time off for calendar
@@ -123,13 +126,18 @@ export default function AdminPage() {
   const submitAddUser = (e: React.FormEvent) => {
     e.preventDefault();
     const n = newUserName.trim();
-    if (!n) return;
+    const un = newUserUsername.trim();
+    if (!n || !un) { alert("Enter name and username"); return; }
     if (!rbac.roles[newUserRole]) return alert("Role does not exist");
-    const rec: UserRecord = { id: crypto.randomUUID(), name: n, role: newUserRole };
+    if (users.some(u => (u.username || '').toLowerCase() === un.toLowerCase())) { alert('Username already exists'); return; }
+    const rec: UserRecord = { id: crypto.randomUUID(), name: n, role: newUserRole, username: un, code: newUserCode.trim() || undefined, password: newUserPassword || undefined };
     addUser(rec);
     setUsers((cur) => [rec, ...cur]);
     addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "user:add", details: `${rec.name} (${rec.role})` });
     setNewUserName("");
+    setNewUserUsername("");
+    setNewUserCode("");
+    setNewUserPassword("");
   };
 
   const onChangeUser = (id: string, name: string, role: string) => {
@@ -228,8 +236,11 @@ export default function AdminPage() {
           <section className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold">Users</h2>
-              <form onSubmit={submitAddUser} className="flex gap-2">
-                <input value={newUserName} onChange={(e) => setNewUserName(e.target.value)} className="border rounded px-3 py-1 bg-transparent" placeholder="Display name" />
+              <form onSubmit={submitAddUser} className="flex flex-wrap gap-2 items-center">
+                <input value={newUserName} onChange={(e) => setNewUserName(e.target.value)} className="border rounded px-3 py-1 bg-transparent" placeholder="Name" />
+                <input value={newUserUsername} onChange={(e) => setNewUserUsername(e.target.value)} className="border rounded px-3 py-1 bg-transparent" placeholder="Username" />
+                <input value={newUserCode} onChange={(e) => setNewUserCode(e.target.value)} className="border rounded px-3 py-1 bg-transparent" placeholder="Code (optional)" />
+                <input type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} className="border rounded px-3 py-1 bg-transparent" placeholder="Password" />
                 <select value={newUserRole} onChange={(e) => setNewUserRole(e.target.value)} className="border rounded px-3 py-1 bg-transparent">
                   {roleNames.map((r) => (
                     <option key={r} value={r}>{r}</option>
@@ -247,8 +258,11 @@ export default function AdminPage() {
                   <thead className="bg-black/5 dark:bg-white/10">
                     <tr>
                       <th className="text-left p-2 border">Name</th>
+                      <th className="text-left p-2 border">Username</th>
+                      <th className="text-left p-2 border">Code</th>
                       <th className="text-left p-2 border">Role</th>
                       <th className="text-left p-2 border">Birthday</th>
+                      <th className="text-left p-2 border">Password</th>
                       <th className="text-left p-2 border">Actions</th>
                     </tr>
                   </thead>
@@ -259,6 +273,26 @@ export default function AdminPage() {
                           <input value={u.name} onChange={(e) => onChangeUser(u.id, e.target.value, u.role)} className="border rounded px-2 py-1 bg-transparent w-full" />
                         </td>
                         <td className="p-2 border">
+                          <input value={u.username || ""} onChange={(e) => {
+                            const rec = users.find(x => x.id === u.id);
+                            if (!rec) return;
+                            const next = { ...rec, username: e.target.value } as UserRecord;
+                            updateUser(next);
+                            setUsers(cur => cur.map(x => x.id === u.id ? next : x));
+                            addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "user:update:username", details: `${rec.name} -> ${e.target.value}` });
+                          }} className="border rounded px-2 py-1 bg-transparent w-full" placeholder="username" />
+                        </td>
+                        <td className="p-2 border">
+                          <input value={u.code || ""} onChange={(e) => {
+                            const rec = users.find(x => x.id === u.id);
+                            if (!rec) return;
+                            const next = { ...rec, code: e.target.value || undefined } as UserRecord;
+                            updateUser(next);
+                            setUsers(cur => cur.map(x => x.id === u.id ? next : x));
+                            addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "user:update:code", details: `${rec.name}` });
+                          }} className="border rounded px-2 py-1 bg-transparent w-full" placeholder="code" />
+                        </td>
+                        <td className="p-2 border">
                           <select value={u.role} onChange={(e) => onChangeUser(u.id, u.name, e.target.value)} className="border rounded px-2 py-1 bg-transparent">
                             {roleNames.map((r) => (
                               <option key={r} value={r}>{r}</option>
@@ -267,6 +301,23 @@ export default function AdminPage() {
                         </td>
                         <td className="p-2 border">
                           <input type="date" value={u.birthday || ""} onChange={(e) => onChangeUserBirthday(u.id, e.target.value)} className="border rounded px-2 py-1 bg-transparent" />
+                        </td>
+                        <td className="p-2 border">
+                          <input type="password" placeholder="Set new password" className="border rounded px-2 py-1 bg-transparent w-full" onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const input = e.currentTarget as HTMLInputElement;
+                              const val = input.value;
+                              input.value = '';
+                              if (!val) return;
+                              const rec = users.find(x => x.id === u.id);
+                              if (!rec) return;
+                              const next = { ...rec, password: val } as UserRecord;
+                              updateUser(next);
+                              setUsers(cur => cur.map(x => x.id === u.id ? next : x));
+                              addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "user:update:password", details: rec.name });
+                              alert('Password updated');
+                            }
+                          }} />
                         </td>
                         <td className="p-2 border">
                           <button className="text-xs px-2 py-1 border rounded" onClick={() => onDeleteUser(u.id)}>Delete</button>
