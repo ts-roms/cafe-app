@@ -2,7 +2,7 @@
 
 A minimal Next.js app that demonstrates:
 - POS (Point of Sale)
-- Accounting (sales ledger, invoicing, expenses, and simple financial reports) with CSV export
+- Accounting (sales ledger, invoicing, expenses, and simple financial reports) with CSV export and double-entry journal
 - Time In/Out tracking with audit logs and shift scheduling
 - Role-Based Access Control (RBAC) with admin-managed roles and permissions (defaults: admin, manager, cashier, staff)
 - Admin: Settings (currency, tax rate), Audit Logs viewer, Roles & Users management

@@ -83,6 +83,7 @@ export default function AccountingPage() {
 
   // double-entry state
   const [fxRates, setFxRates] = useState<ExchangeRates>({});
+  const [coa, setCoa] = useState<Account[]>([]);
   const [journal, setJournal] = useState<JournalEntry[]>([]);
 
   useEffect(() => {
@@ -95,7 +96,7 @@ export default function AccountingPage() {
     setDirectory(getUsers());
     setLogs(getTimeLogs());
     setFxRates(getExchangeRates());
-    setAccounts(getAccounts());
+    setCoa(getAccounts());
     setJournal(getJournal());
   }, []);
 
@@ -282,11 +283,15 @@ export default function AccountingPage() {
               <h2 className="text-xl font-semibold">Expenses</h2>
               <a className="px-3 py-1 rounded border text-sm" href={`data:text/csv;charset=utf-8,${encodeURIComponent(expensesCsv)}`} download={`expenses-${new Date().toISOString().slice(0,10)}.csv`}>Export CSV</a>
             </div>
-            <form onSubmit={submitExpense} className="grid sm:grid-cols-5 gap-2 p-3 border rounded">
-              <input value={expCategory} onChange={(e) => setExpCategory(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" placeholder="Category" />
+            <form onSubmit={submitExpense} className="grid sm:grid-cols-7 gap-2 p-3 border rounded">
+              <input value={expCategory} onChange={(e) => setExpCategory(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-2" placeholder="Category" />
               <input value={expNote} onChange={(e) => setExpNote(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-2" placeholder="Note (optional)" />
               <input value={expAmount} onChange={(e) => setExpAmount(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" placeholder="Amount" inputMode="decimal" />
-              <button className="px-4 py-2 rounded bg-foreground text-background sm:col-span-1">Add</button>
+              <select value={expCurrency} onChange={(e) => { const cur = e.target.value; setExpCurrency(cur); setExpRate(String(cur === getSettings().currency ? 1 : (fxRates[cur] || 1))); }} className="border rounded px-3 py-2 bg-transparent sm:col-span-1">
+                {Object.keys(fxRates).map(c => (<option key={c} value={c}>{c}</option>))}
+              </select>
+              <input value={expRate} onChange={(e) => setExpRate(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" placeholder="Rate to Base" inputMode="decimal" />
+              <button className="px-4 py-2 rounded bg-foreground text-background sm:col-span-7">Add</button>
             </form>
 
             {expenses.length === 0 ? (
@@ -496,6 +501,17 @@ export default function AccountingPage() {
                       addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "tax:file", details: `Tax filed for ${new Date().toISOString().slice(0,10)}` });
                       alert("Marked as filed (audit recorded)");
                     }}>Mark as Filed</button>
+                    <button className="px-3 py-1 rounded border text-sm" onClick={() => {
+                      const defAmt = totalTax.toFixed(2);
+                      const raw = prompt("Record tax payment amount (base currency)", defAmt);
+                      if (!raw) return;
+                      const amt = parseFloat(raw);
+                      if (!isFinite(amt) || amt <= 0) return alert("Enter a valid amount");
+                      recordTaxPayment(amt);
+                      setJournal(getJournal());
+                      addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "tax:payment", details: `$${amt.toFixed(2)}` });
+                      alert("Tax payment recorded in journal.");
+                    }}>Record Tax Payment</button>
                   </div>
                 </div>
               );
@@ -573,6 +589,95 @@ export default function AccountingPage() {
                 </table>
               </div>
             )}
+          </section>
+        )}
+
+        {tab === "double" && (
+          <section className="space-y-4">
+            <h2 className="text-xl font-semibold">Double-Entry: Trial Balance & Journal</h2>
+            {/* Trial Balance */}
+            {(() => {
+              const sums: Record<string, { debit: number; credit: number }> = {};
+              for (const j of journal) {
+                for (const ln of j.lines) {
+                  const cur = sums[ln.accountId] || { debit: 0, credit: 0 };
+                  cur.debit += ln.debit;
+                  cur.credit += ln.credit;
+                  sums[ln.accountId] = cur;
+                }
+              }
+              const rows = coa.map(acc => {
+                const s = sums[acc.id] || { debit: 0, credit: 0 };
+                const bal = s.debit - s.credit;
+                // Normal balance side: Asset/Expense debit; Liability/Equity/Revenue credit
+                const isDebitNormal = acc.type === "Asset" || acc.type === "Expense";
+                const debitCol = isDebitNormal ? Math.max(0, bal) : Math.max(0, -bal);
+                const creditCol = isDebitNormal ? Math.max(0, -bal) : Math.max(0, bal);
+                return { acc, debitCol, creditCol };
+              });
+              const totalD = rows.reduce((t, r) => t + r.debitCol, 0);
+              const totalC = rows.reduce((t, r) => t + r.creditCol, 0);
+              return (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border text-sm">
+                    <thead className="bg-black/5 dark:bg-white/10">
+                      <tr>
+                        <th className="text-left p-2 border">Account</th>
+                        <th className="text-right p-2 border">Debit</th>
+                        <th className="text-right p-2 border">Credit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map(r => (
+                        <tr key={r.acc.id} className="odd:bg-black/0 even:bg-black/5 dark:even:bg-white/5">
+                          <td className="p-2 border">{r.acc.code} {r.acc.name} <span className="opacity-60 text-xs">({r.acc.type})</span></td>
+                          <td className="p-2 border text-right">${totalD === 0 && totalC === 0 ? "0.00" : r.debitCol.toFixed(2)}</td>
+                          <td className="p-2 border text-right">${totalD === 0 && totalC === 0 ? "0.00" : r.creditCol.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td className="p-2 border font-semibold">Totals</td>
+                        <td className="p-2 border text-right font-semibold">${totalD.toFixed(2)}</td>
+                        <td className="p-2 border text-right font-semibold">${totalC.toFixed(2)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              );
+            })()}
+
+            {/* Journal Entries */}
+            <div className="overflow-x-auto">
+              <table className="min-w-full border text-sm">
+                <thead className="bg-black/5 dark:bg-white/10">
+                  <tr>
+                    <th className="text-left p-2 border">Date</th>
+                    <th className="text-left p-2 border">Memo</th>
+                    <th className="text-left p-2 border">Lines</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {journal.length === 0 ? (
+                    <tr><td className="p-2 border" colSpan={3}>No journal entries yet.</td></tr>
+                  ) : (
+                    journal.map(j => (
+                      <tr key={j.id} className="odd:bg-black/0 even:bg-black/5 dark:even:bg-white/5">
+                        <td className="p-2 border whitespace-nowrap">{new Date(j.at).toLocaleString()}</td>
+                        <td className="p-2 border">{j.memo || "—"}{j.currency && j.rateToBase ? <span className="ml-2 text-xs opacity-60">[{j.currency} @ {j.rateToBase}]</span> : null}</td>
+                        <td className="p-2 border">
+                          {j.lines.map((ln, idx) => {
+                            const acc = coa.find(a => a.id === ln.accountId);
+                            return <div key={idx}>{acc ? `${acc.code} ${acc.name}` : ln.accountId}: {ln.debit > 0 ? `Dr ${ln.debit.toFixed(2)}` : `Cr ${ln.credit.toFixed(2)}`}</div>;
+                          })}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </section>
         )}
       </div>
