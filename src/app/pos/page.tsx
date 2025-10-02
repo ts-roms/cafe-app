@@ -38,6 +38,7 @@ export default function POSPage() {
   const [taxRate, setTaxRate] = useState<number>(0);
   const [discount, setDiscount] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "other">("cash");
+  const [paymentAmount, setPaymentAmount] = useState<string>("");
   const [hasOpenTimeLog, setHasOpenTimeLog] = useState<boolean | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
   const [scan, setScan] = useState<string>("");
@@ -151,6 +152,12 @@ export default function POSPage() {
     return parseFloat(((base * (taxRate || 0)) / 100).toFixed(2));
   }, [subtotal, discountAmt, promoDiscountAmt, taxRate]);
   const grandTotal = useMemo(() => parseFloat((Math.max(0, subtotal - discountAmt - promoDiscountAmt) + taxAmount).toFixed(2)), [subtotal, discountAmt, promoDiscountAmt, taxAmount]);
+  const changeDue = useMemo(() => {
+    if (paymentMethod !== "cash") return 0;
+    const amt = parseFloat(paymentAmount);
+    if (!isFinite(amt)) return 0;
+    return parseFloat(Math.max(0, amt - grandTotal).toFixed(2));
+  }, [paymentMethod, paymentAmount, grandTotal]);
 
   const canManageInv = user ? hasPermission(user.role, "inventory:manage") : false;
 
@@ -207,6 +214,9 @@ export default function POSPage() {
       ${sale.promoCode ? `<div class="muted">Promo (${sale.promoCode}): -$${(sale.promoDiscount || 0).toFixed(2)}</div>` : ""}
       <div class="muted">Tax: $${(sale.taxAmount || 0).toFixed(2)}</div>
       <div class="total">Total: $${sale.total.toFixed(2)}</div>
+      <div class="muted">Payment: ${sale.paymentMethod || "—"}</div>
+      ${sale.cashTendered != null ? `<div class="muted">Tendered: $${(sale.cashTendered || 0).toFixed(2)}</div>` : ""}
+      ${sale.change != null ? `<div class="muted">Change: $${(sale.change || 0).toFixed(2)}</div>` : ""}
       </body></html>`;
     w.document.write(html);
     w.document.close();
@@ -234,6 +244,19 @@ export default function POSPage() {
     if (!user) return;
     if (items.length === 0) return alert("Cart is empty");
 
+    // Validate cash payment amount
+    let cashTenderedNum: number | undefined = undefined;
+    let changeNum: number | undefined = undefined;
+    if (paymentMethod === "cash") {
+      const amt = parseFloat(paymentAmount || "");
+      if (!isFinite(amt) || amt < grandTotal) {
+        alert(`Enter a valid payment amount >= total ($${grandTotal.toFixed(2)})`);
+        return;
+      }
+      cashTenderedNum = parseFloat(amt.toFixed(2));
+      changeNum = parseFloat((amt - grandTotal).toFixed(2));
+    }
+
     // Generate simple receipt number
     const now = new Date();
     const ymd = now.toISOString().slice(0, 10).replace(/-/g, "");
@@ -258,6 +281,8 @@ export default function POSPage() {
       promoCode: appliedPromo?.code,
       promoDiscount: promoDiscountAmt,
       paymentMethod,
+      cashTendered: cashTenderedNum,
+      change: changeNum,
       total: grandTotal,
       receiptNo,
       customer: saleCustomer,
@@ -272,6 +297,7 @@ export default function POSPage() {
     clear();
     setAppliedPromoId("");
     setPromoInput("");
+    setPaymentAmount("");
     alert(`Sale recorded. Receipt: ${receiptNo}`);
   };
 
@@ -322,12 +348,6 @@ export default function POSPage() {
                     <div className="font-medium">{p.name}</div>
                     <div className="text-sm">${p.price.toFixed(2)}</div>
                     <div className="text-xs opacity-70 flex items-center gap-2">Stock: {p.stock} {p.stock <= 5 && p.stock > 0 ? <span className="text-orange-600">(Low)</span> : null}</div>
-                    {canManageInv && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); restockItem(p.id); }}
-                        className="mt-2 text-xs px-2 py-1 border rounded"
-                      >Restock</button>
-                    )}
                   </button>
                 );
               });
@@ -410,6 +430,28 @@ export default function POSPage() {
                     <option value="other">Other</option>
                   </select>
                 </div>
+                {paymentMethod === "cash" && (
+                  <>
+                    <div>
+                      <label className="block text-sm mb-1">Payment Amount</label>
+                      <input
+                        value={paymentAmount}
+                        onChange={(e) => setPaymentAmount(e.target.value)}
+                        className="w-full border rounded px-3 py-2 bg-transparent text-right"
+                        placeholder={grandTotal.toFixed(2)}
+                        inputMode="decimal"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1">Change</label>
+                      <input
+                        value={changeDue.toFixed(2)}
+                        readOnly
+                        className="w-full border rounded px-3 py-2 bg-transparent text-right opacity-80"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
               <div className="flex items-center justify-between">
                 <div className="text-sm opacity-80">Tax ({taxRate}%)</div>

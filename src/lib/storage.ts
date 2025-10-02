@@ -27,6 +27,8 @@ export type Sale = {
   promoCode?: string; // applied promo code, if any
   promoDiscount?: number; // discount amount from promo only
   paymentMethod?: "cash" | "card" | "other";
+  cashTendered?: number; // amount given by customer (cash payments)
+  change?: number; // change due to customer (cash payments)
   // Final amount charged (subtotal - discount + tax)
   total: number;
   receiptNo?: string;
