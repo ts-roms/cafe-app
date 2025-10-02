@@ -18,6 +18,7 @@ import {
   getTimeLogs,
   saveInventory,
   findInventoryByBarcode,
+  postSaleToJournal,
 } from "@/lib/storage";
 
 export default function POSPage() {
@@ -200,6 +201,7 @@ export default function POSPage() {
     };
 
     addSale(sale);
+    try { postSaleToJournal(sale); } catch {}
     addAudit({ id: crypto.randomUUID(), at: now.toISOString(), user: { id: user.id, name: user.name }, action: "sale:checkout", details: `${receiptNo} ${saleCustomer?.name ? `for ${saleCustomer.name} ` : ""}- ${paymentMethod} - ${grandTotal.toFixed(2)}` });
     const updatedInv = adjustInventoryForSale(items);
     setInventory(updatedInv);

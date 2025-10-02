@@ -30,6 +30,16 @@ import {
   type UserRecord,
   getTimeLogs,
   type TimeLog,
+  getExchangeRates,
+  saveExchangeRates,
+  type ExchangeRates,
+  getAccounts,
+  type Account,
+  getJournal,
+  type JournalEntry,
+  postInvoiceToJournal,
+  postExpenseToJournal,
+  recordTaxPayment,
 } from "@/lib/storage";
 
 function hoursBetween(startIso: string, endIso?: string): number {
@@ -41,7 +51,7 @@ function hoursBetween(startIso: string, endIso?: string): number {
 
 export default function AccountingPage() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<"ledger" | "invoices" | "expenses" | "reports" | "payments" | "banking" | "tax" | "payroll">("ledger");
+  const [tab, setTab] = useState<"ledger" | "invoices" | "expenses" | "reports" | "payments" | "banking" | "tax" | "payroll" | "double">("ledger");
 
   const [sales, setSales] = useState<Sale[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -62,10 +72,18 @@ export default function AccountingPage() {
   const [invCustomer, setInvCustomer] = useState("");
   const [invAmount, setInvAmount] = useState("");
   const [invStatus, setInvStatus] = useState<"unpaid" | "paid">("unpaid");
+  const [invCurrency, setInvCurrency] = useState<string>(getSettings().currency);
+  const [invRate, setInvRate] = useState<string>("1");
 
   const [expCategory, setExpCategory] = useState("General");
   const [expNote, setExpNote] = useState("");
   const [expAmount, setExpAmount] = useState("");
+  const [expCurrency, setExpCurrency] = useState<string>(getSettings().currency);
+  const [expRate, setExpRate] = useState<string>("1");
+
+  // double-entry state
+  const [fxRates, setFxRates] = useState<ExchangeRates>({});
+  const [journal, setJournal] = useState<JournalEntry[]>([]);
 
   useEffect(() => {
     setSales(getSales());
@@ -76,6 +94,9 @@ export default function AccountingPage() {
     setTransactions(getBankTransactions());
     setDirectory(getUsers());
     setLogs(getTimeLogs());
+    setFxRates(getExchangeRates());
+    setAccounts(getAccounts());
+    setJournal(getJournal());
   }, []);
 
   const salesTotal = useMemo(() => sales.reduce((s, x) => s + x.total, 0), [sales]);
@@ -98,13 +119,19 @@ export default function AccountingPage() {
       customer: invCustomer.trim(),
       amount: parseFloat(amt.toFixed(2)),
       status: invStatus,
+      currency: invCurrency,
+      rateToBase: parseFloat(invRate) || 1,
     };
     addInvoice(inv);
-    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "invoice:add", details: `${inv.customer} ${inv.status} ${inv.amount.toFixed(2)}` });
+    try { postInvoiceToJournal(inv); } catch {}
+    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "invoice:add", details: `${inv.customer} ${inv.status} ${inv.amount.toFixed(2)} ${inv.currency || ''}` });
     setInvoices((cur) => [inv, ...cur]);
+    setJournal(getJournal());
     setInvCustomer("");
     setInvAmount("");
     setInvStatus("unpaid");
+    setInvCurrency(getSettings().currency);
+    setInvRate("1");
     setTab("invoices");
   };
 
@@ -118,12 +145,18 @@ export default function AccountingPage() {
       category: expCategory.trim() || "General",
       note: expNote.trim() || undefined,
       amount: parseFloat(amt.toFixed(2)),
+      currency: expCurrency,
+      rateToBase: parseFloat(expRate) || 1,
     };
     addExpense(exp);
-    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "expense:add", details: `${exp.category} ${exp.amount.toFixed(2)}` });
+    try { postExpenseToJournal(exp); } catch {}
+    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "expense:add", details: `${exp.category} ${exp.amount.toFixed(2)} ${exp.currency || ''}` });
     setExpenses((cur) => [exp, ...cur]);
+    setJournal(getJournal());
     setExpNote("");
     setExpAmount("");
+    setExpCurrency(getSettings().currency);
+    setExpRate("1");
     setTab("expenses");
   };
 
@@ -140,6 +173,7 @@ export default function AccountingPage() {
           <TabButton label="Banking" active={tab === "banking"} onClick={() => setTab("banking")} />
           <TabButton label="Tax" active={tab === "tax"} onClick={() => setTab("tax")} />
           <TabButton label="Payroll" active={tab === "payroll"} onClick={() => setTab("payroll")} />
+          <TabButton label="Double-Entry" active={tab === "double"} onClick={() => setTab("double")} />
         </div>
 
         {tab === "ledger" && (
@@ -193,14 +227,18 @@ export default function AccountingPage() {
               <h2 className="text-xl font-semibold">Invoices</h2>
               <a className="px-3 py-1 rounded border text-sm" href={`data:text/csv;charset=utf-8,${encodeURIComponent(invoicesCsv)}`} download={`invoices-${new Date().toISOString().slice(0,10)}.csv`}>Export CSV</a>
             </div>
-            <form onSubmit={submitInvoice} className="grid sm:grid-cols-4 gap-2 p-3 border rounded">
-              <input value={invCustomer} onChange={(e) => setInvCustomer(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" placeholder="Customer" />
+            <form onSubmit={submitInvoice} className="grid sm:grid-cols-6 gap-2 p-3 border rounded">
+              <input value={invCustomer} onChange={(e) => setInvCustomer(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-2" placeholder="Customer" />
               <input value={invAmount} onChange={(e) => setInvAmount(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" placeholder="Amount" inputMode="decimal" />
+              <select value={invCurrency} onChange={(e) => { const cur = e.target.value; setInvCurrency(cur); setInvRate(String(cur === getSettings().currency ? 1 : (fxRates[cur] || 1))); }} className="border rounded px-3 py-2 bg-transparent sm:col-span-1">
+                {Object.keys(fxRates).map(c => (<option key={c} value={c}>{c}</option>))}
+              </select>
+              <input value={invRate} onChange={(e) => setInvRate(e.target.value)} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" placeholder="Rate to Base" inputMode="decimal" />
               <select value={invStatus} onChange={(e) => setInvStatus(e.target.value as "unpaid" | "paid")} className="border rounded px-3 py-2 bg-transparent sm:col-span-1">
                 <option value="unpaid">Unpaid</option>
                 <option value="paid">Paid</option>
               </select>
-              <button className="px-4 py-2 rounded bg-foreground text-background sm:col-span-1">Add</button>
+              <button className="px-4 py-2 rounded bg-foreground text-background sm:col-span-6">Add</button>
             </form>
 
             {invoices.length === 0 ? (

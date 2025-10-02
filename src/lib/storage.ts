@@ -8,6 +8,11 @@ const CUSTOMERS_KEY = "cafe_customers";
 const SETTINGS_KEY = "cafe_settings";
 const AUDIT_KEY = "cafe_audit";
 
+// Double-entry accounting storage keys
+const ACCOUNTS_KEY = "cafe_accounts";
+const JOURNAL_KEY = "cafe_journal";
+const RATES_KEY = "cafe_fx_rates";
+
 export type SaleItem = { id: string; name: string; price: number; qty: number };
 export type Customer = { id: string; name: string; phone?: string };
 export type Sale = {
@@ -144,6 +149,8 @@ export type Invoice = {
   customer: string;
   amount: number;
   status: "unpaid" | "paid";
+  currency?: string; // original currency (optional)
+  rateToBase?: number; // if currency provided, multiplier to base currency
 };
 
 export type Expense = {
@@ -152,6 +159,8 @@ export type Expense = {
   category: string;
   note?: string;
   amount: number;
+  currency?: string; // original currency (optional)
+  rateToBase?: number; // if currency provided, multiplier to base currency
 };
 
 // Invoices helpers
@@ -192,6 +201,176 @@ export function addExpense(exp: Expense) {
   const all = getExpenses();
   all.unshift(exp);
   saveExpenses(all);
+}
+
+// --- Double-entry accounting types & helpers ---
+export type AccountType = "Asset" | "Liability" | "Equity" | "Revenue" | "Expense";
+export type Account = { id: string; code: string; name: string; type: AccountType };
+
+const DEFAULT_ACCOUNTS: Account[] = [
+  { id: "cash", code: "1010", name: "Cash", type: "Asset" },
+  { id: "bank", code: "1020", name: "Bank", type: "Asset" },
+  { id: "ar", code: "1100", name: "Accounts Receivable", type: "Asset" },
+  { id: "inventory", code: "1200", name: "Inventory", type: "Asset" },
+  { id: "sales", code: "4000", name: "Sales Revenue", type: "Revenue" },
+  { id: "discounts", code: "4050", name: "Sales Discounts", type: "Revenue" },
+  { id: "cogs", code: "5000", name: "Cost of Goods Sold", type: "Expense" },
+  { id: "expenses", code: "6000", name: "Operating Expenses", type: "Expense" },
+  { id: "tax", code: "2100", name: "Sales Tax Payable", type: "Liability" },
+];
+
+export function getAccounts(): Account[] {
+  try {
+    const raw = localStorage.getItem(ACCOUNTS_KEY);
+    if (raw) return JSON.parse(raw) as Account[];
+    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(DEFAULT_ACCOUNTS));
+    return [...DEFAULT_ACCOUNTS];
+  } catch {
+    return [...DEFAULT_ACCOUNTS];
+  }
+}
+
+export function saveAccounts(list: Account[]) {
+  localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(list));
+}
+
+export type JournalLine = { accountId: string; debit: number; credit: number };
+export type JournalEntry = {
+  id: string;
+  at: string; // ISO date
+  memo?: string;
+  currency?: string; // original currency code if different from base
+  rateToBase?: number; // multiplier to convert original currency -> base
+  lines: JournalLine[]; // amounts are in base currency
+};
+
+export function getJournal(): JournalEntry[] {
+  try {
+    const raw = localStorage.getItem(JOURNAL_KEY);
+    return raw ? (JSON.parse(raw) as JournalEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveJournal(list: JournalEntry[]) {
+  localStorage.setItem(JOURNAL_KEY, JSON.stringify(list));
+}
+
+export function addJournal(entry: JournalEntry) {
+  const all = getJournal();
+  all.unshift(entry);
+  saveJournal(all);
+}
+
+export type ExchangeRates = Record<string, number>; // currency -> rateToBase
+
+const DEFAULT_RATES: ExchangeRates = { USD: 1, EUR: 0.9, PHP: 58 };
+
+export function getExchangeRates(): ExchangeRates {
+  try {
+    const raw = localStorage.getItem(RATES_KEY);
+    return raw ? (JSON.parse(raw) as ExchangeRates) : { ...DEFAULT_RATES };
+  } catch {
+    return { ...DEFAULT_RATES };
+  }
+}
+
+export function saveExchangeRates(r: ExchangeRates) {
+  localStorage.setItem(RATES_KEY, JSON.stringify(r));
+}
+
+// Posting helpers
+export function postSaleToJournal(sale: Sale) {
+  const settings = getSettings();
+  const baseCur = settings.currency;
+  const subtotal = sale.items.reduce((s, it) => s + it.price * it.qty, 0);
+  const discount = sale.discountAmount || 0;
+  const tax = sale.taxAmount || 0;
+  const netRevenue = Math.max(0, subtotal - discount);
+  const total = sale.total; // netRevenue + tax
+  const cashAccount = sale.paymentMethod === "cash" || sale.paymentMethod === "card" ? "cash" : "cash";
+  const lines: JournalLine[] = [
+    { accountId: cashAccount, debit: round2(total), credit: 0 },
+    { accountId: "sales", debit: 0, credit: round2(netRevenue) },
+  ];
+  if (tax > 0) lines.push({ accountId: "tax", debit: 0, credit: round2(tax) });
+  const entry: JournalEntry = {
+    id: crypto.randomUUID(),
+    at: sale.at,
+    memo: `Sale ${sale.receiptNo || sale.id.slice(0,6)}`,
+    currency: baseCur,
+    rateToBase: 1,
+    lines,
+  };
+  addJournal(entry);
+}
+
+export function postInvoiceToJournal(inv: Invoice) {
+  const settings = getSettings();
+  const baseCur = settings.currency;
+  const rate = inv.currency && inv.currency !== baseCur ? inv.rateToBase || 1 : 1;
+  const baseAmt = round2(inv.amount * rate);
+  const lines: JournalLine[] = [];
+  if (inv.status === "paid") {
+    lines.push({ accountId: "cash", debit: baseAmt, credit: 0 });
+    lines.push({ accountId: "sales", debit: 0, credit: baseAmt });
+  } else {
+    lines.push({ accountId: "ar", debit: baseAmt, credit: 0 });
+    lines.push({ accountId: "sales", debit: 0, credit: baseAmt });
+  }
+  const entry: JournalEntry = {
+    id: crypto.randomUUID(),
+    at: inv.at,
+    memo: `Invoice ${inv.customer} (${inv.status})`,
+    currency: inv.currency || baseCur,
+    rateToBase: rate,
+    lines,
+  };
+  addJournal(entry);
+}
+
+export function postExpenseToJournal(exp: Expense) {
+  const settings = getSettings();
+  const baseCur = settings.currency;
+  const rate = exp.currency && exp.currency !== baseCur ? exp.rateToBase || 1 : 1;
+  const baseAmt = round2(exp.amount * rate);
+  const lines: JournalLine[] = [
+    { accountId: "expenses", debit: baseAmt, credit: 0 },
+    { accountId: "cash", debit: 0, credit: baseAmt },
+  ];
+  const entry: JournalEntry = {
+    id: crypto.randomUUID(),
+    at: exp.at,
+    memo: `Expense ${exp.category}`,
+    currency: exp.currency || baseCur,
+    rateToBase: rate,
+    lines,
+  };
+  addJournal(entry);
+}
+
+export function recordTaxPayment(amount: number) {
+  const settings = getSettings();
+  const baseCur = settings.currency;
+  const baseAmt = round2(amount);
+  const lines: JournalLine[] = [
+    { accountId: "tax", debit: baseAmt, credit: 0 },
+    { accountId: "cash", debit: 0, credit: baseAmt },
+  ];
+  const entry: JournalEntry = {
+    id: crypto.randomUUID(),
+    at: new Date().toISOString(),
+    memo: "Tax payment",
+    currency: baseCur,
+    rateToBase: 1,
+    lines,
+  };
+  addJournal(entry);
+}
+
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
 // Shifts (Attendance) helpers
