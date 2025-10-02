@@ -18,6 +18,15 @@ All data is stored locally in your browser (localStorage) for simplicity. No bac
    - npm run dev
 3. Open http://localhost:3000
 
+## Tests
+
+This project uses Jest for unit testing.
+
+- Run all tests once:
+  - npm test
+- Run in watch mode:
+  - npm run test:watch
+
 ## Features
 
 - Login (mock): pick a role and optional display name. Stored in localStorage.
