@@ -28,6 +28,10 @@ All data is stored locally in your browser (localStorage) for simplicity. No bac
   - Customer data: optionally capture customer name at checkout and store it.
   - Taxes & Discounts: configurable tax rate from Admin; per-order discount input; totals show subtotal, tax, grand total.
   - Payment methods: record cash/card/other for each sale.
+  - Barcode scanning: scan with a keyboard-wedge barcode scanner or type a code and press Enter. Seed barcodes: 0001–0005 for demo items.
+  - Inventory tracking: stock-aware catalog with low-stock indicator and manager/Admin restock action from POS.
+  - Offline mode: works offline using localStorage; an offline banner appears when the network is down.
+  - Hardware integration: basic support for scanners (as keyboard input) and receipt printing via the browser Print dialog.
 - Accounting: tabs for
   - Ledger: view sales and grand total.
   - Invoices: add simple invoices (customer, amount, status) and list them.

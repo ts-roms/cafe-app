@@ -26,15 +26,15 @@ export type Sale = {
   customer?: { id: string; name: string };
 };
 
-export type InventoryItem = { id: string; name: string; price: number; stock: number };
+export type InventoryItem = { id: string; name: string; price: number; stock: number; barcode?: string };
 
 // Seed inventory if missing
 const DEFAULT_INVENTORY: InventoryItem[] = [
-  { id: "coffee", name: "Coffee", price: 3, stock: 20 },
-  { id: "latte", name: "Latte", price: 4, stock: 20 },
-  { id: "tea", name: "Tea", price: 2.5, stock: 20 },
-  { id: "sandwich", name: "Sandwich", price: 5.5, stock: 20 },
-  { id: "cake", name: "Cake Slice", price: 3.25, stock: 20 },
+  { id: "coffee", name: "Coffee", price: 3, stock: 20, barcode: "0001" },
+  { id: "latte", name: "Latte", price: 4, stock: 20, barcode: "0002" },
+  { id: "tea", name: "Tea", price: 2.5, stock: 20, barcode: "0003" },
+  { id: "sandwich", name: "Sandwich", price: 5.5, stock: 20, barcode: "0004" },
+  { id: "cake", name: "Cake Slice", price: 3.25, stock: 20, barcode: "0005" },
 ];
 
 import type { Role } from "@/lib/rbac";
@@ -91,6 +91,13 @@ export function getInventory(): InventoryItem[] {
 
 export function saveInventory(list: InventoryItem[]) {
   localStorage.setItem(INVENTORY_KEY, JSON.stringify(list));
+}
+
+export function findInventoryByBarcode(code: string): InventoryItem | undefined {
+  const trimmed = (code || "").trim();
+  if (!trimmed) return undefined;
+  const inv = getInventory();
+  return inv.find((i) => i.barcode && i.barcode === trimmed);
 }
 
 export function adjustInventoryForSale(items: SaleItem[]): InventoryItem[] {
