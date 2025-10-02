@@ -29,6 +29,7 @@ export type Sale = {
   paymentMethod?: "cash" | "card" | "other";
   cashTendered?: number; // amount given by customer (cash payments)
   change?: number; // change due to customer (cash payments)
+  paymentRef?: string; // reference number for card/other payments
   // Final amount charged (subtotal - discount + tax)
   total: number;
   receiptNo?: string;

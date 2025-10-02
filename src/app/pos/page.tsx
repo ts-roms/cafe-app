@@ -39,6 +39,7 @@ export default function POSPage() {
   const [discount, setDiscount] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "other">("cash");
   const [paymentAmount, setPaymentAmount] = useState<string>("");
+  const [paymentRef, setPaymentRef] = useState<string>("");
   const [hasOpenTimeLog, setHasOpenTimeLog] = useState<boolean | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
   const [scan, setScan] = useState<string>("");
@@ -215,6 +216,7 @@ export default function POSPage() {
       <div class="muted">Tax: $${(sale.taxAmount || 0).toFixed(2)}</div>
       <div class="total">Total: $${sale.total.toFixed(2)}</div>
       <div class="muted">Payment: ${sale.paymentMethod || "—"}</div>
+      ${sale.paymentMethod !== 'cash' && sale.paymentRef ? `<div class="muted">Reference: ${sale.paymentRef}</div>` : ""}
       ${sale.cashTendered != null ? `<div class="muted">Tendered: $${(sale.cashTendered || 0).toFixed(2)}</div>` : ""}
       ${sale.change != null ? `<div class="muted">Change: $${(sale.change || 0).toFixed(2)}</div>` : ""}
       </body></html>`;
@@ -244,7 +246,7 @@ export default function POSPage() {
     if (!user) return;
     if (items.length === 0) return alert("Cart is empty");
 
-    // Validate cash payment amount
+    // Validate payment details
     let cashTenderedNum: number | undefined = undefined;
     let changeNum: number | undefined = undefined;
     if (paymentMethod === "cash") {
@@ -255,6 +257,11 @@ export default function POSPage() {
       }
       cashTenderedNum = parseFloat(amt.toFixed(2));
       changeNum = parseFloat((amt - grandTotal).toFixed(2));
+    } else {
+      if (!paymentRef.trim()) {
+        alert("Enter a reference # for this payment");
+        return;
+      }
     }
 
     // Generate simple receipt number
@@ -283,6 +290,7 @@ export default function POSPage() {
       paymentMethod,
       cashTendered: cashTenderedNum,
       change: changeNum,
+      paymentRef: paymentMethod === "cash" ? undefined : paymentRef.trim(),
       total: grandTotal,
       receiptNo,
       customer: saleCustomer,
@@ -298,6 +306,7 @@ export default function POSPage() {
     setAppliedPromoId("");
     setPromoInput("");
     setPaymentAmount("");
+    setPaymentRef("");
     alert(`Sale recorded. Receipt: ${receiptNo}`);
   };
 
@@ -430,7 +439,7 @@ export default function POSPage() {
                     <option value="other">Other</option>
                   </select>
                 </div>
-                {paymentMethod === "cash" && (
+                {paymentMethod === "cash" ? (
                   <>
                     <div>
                       <label className="block text-sm mb-1">Payment Amount</label>
@@ -451,6 +460,16 @@ export default function POSPage() {
                       />
                     </div>
                   </>
+                ) : (
+                  <div>
+                    <label className="block text-sm mb-1">Reference #</label>
+                    <input
+                      value={paymentRef}
+                      onChange={(e) => setPaymentRef(e.target.value)}
+                      className="w-full border rounded px-3 py-2 bg-transparent"
+                      placeholder="Auth code / reference"
+                    />
+                  </div>
                 )}
               </div>
               <div className="flex items-center justify-between">
