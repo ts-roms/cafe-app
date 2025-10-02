@@ -19,6 +19,8 @@ import {
   saveInventory,
   findInventoryByBarcode,
   postSaleToJournal,
+  getCategories,
+  type Category,
 } from "@/lib/storage";
 
 export default function POSPage() {
@@ -33,17 +35,22 @@ export default function POSPage() {
   const [hasOpenTimeLog, setHasOpenTimeLog] = useState<boolean | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
   const [scan, setScan] = useState<string>("");
+  const [categories, setCategories] = useState<Category[]>([]);
 
   useEffect(() => {
     setInventory(getInventory());
+    setCategories(getCategories());
     setRecent(getSales().slice(0, 5));
     const s = getSettings();
     setTaxRate(typeof s.taxRate === "number" ? s.taxRate : 0);
   }, []);
 
-  // Auto-refresh inventory from Inventory module when window gains focus (e.g., after editing products)
+  // Auto-refresh inventory and categories from Inventory module when window gains focus (e.g., after editing products)
   useEffect(() => {
-    const onFocus = () => setInventory(getInventory());
+    const onFocus = () => {
+      setInventory(getInventory());
+      setCategories(getCategories());
+    };
     if (typeof window !== "undefined") {
       window.addEventListener("focus", onFocus);
     }
@@ -247,27 +254,39 @@ export default function POSPage() {
             >Refresh from Inventory</button>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {inventory.filter(p => p.enabled !== false && p.archived !== true).map((p) => {
-              const out = p.stock <= 0;
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => addToCart(p.id)}
-                  disabled={out}
-                  className={`p-3 border rounded text-left ${out ? "opacity-50 cursor-not-allowed" : "hover:bg-black/5 dark:hover:bg-white/10"}`}
-                >
-                  <div className="font-medium">{p.name}</div>
-                  <div className="text-sm">${p.price.toFixed(2)}</div>
-                  <div className="text-xs opacity-70 flex items-center gap-2">Stock: {p.stock} {p.stock <= 5 && p.stock > 0 ? <span className="text-orange-600">(Low)</span> : null}</div>
-                  {canManageInv && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); restockItem(p.id); }}
-                      className="mt-2 text-xs px-2 py-1 border rounded"
-                    >Restock</button>
-                  )}
-                </button>
-              );
-            })}
+            {(() => {
+              const nameByCat = (id?: string) => categories.find(c => c.id === id)?.name || "zzzz"; // Uncategorized last
+              const visibleProducts = [...inventory]
+                .filter(p => p.enabled !== false && p.archived !== true)
+                .sort((a, b) => {
+                  const ca = nameByCat(a.categoryId);
+                  const cb = nameByCat(b.categoryId);
+                  const catCmp = ca.localeCompare(cb);
+                  if (catCmp !== 0) return catCmp;
+                  return a.name.localeCompare(b.name);
+                });
+              return visibleProducts.map((p) => {
+                const out = p.stock <= 0;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => addToCart(p.id)}
+                    disabled={out}
+                    className={`p-3 border rounded text-left ${out ? "opacity-50 cursor-not-allowed" : "hover:bg-black/5 dark:hover:bg-white/10"}`}
+                  >
+                    <div className="font-medium">{p.name}</div>
+                    <div className="text-sm">${p.price.toFixed(2)}</div>
+                    <div className="text-xs opacity-70 flex items-center gap-2">Stock: {p.stock} {p.stock <= 5 && p.stock > 0 ? <span className="text-orange-600">(Low)</span> : null}</div>
+                    {canManageInv && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); restockItem(p.id); }}
+                        className="mt-2 text-xs px-2 py-1 border rounded"
+                      >Restock</button>
+                    )}
+                  </button>
+                );
+              });
+            })()}
           </div>
         </section>
         <section className="space-y-3">

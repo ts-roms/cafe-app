@@ -316,7 +316,7 @@ export function postSaleToJournal(sale: Sale) {
   const tax = sale.taxAmount || 0;
   const netRevenue = Math.max(0, subtotal - discount);
   const total = sale.total; // netRevenue + tax
-  const cashAccount = sale.paymentMethod === "cash" || sale.paymentMethod === "card" ? "cash" : "cash";
+  const cashAccount = (sale.paymentMethod === "cash" || sale.paymentMethod === "card") ? "cash" : "cash";
   const lines: JournalLine[] = [
     { accountId: cashAccount, debit: round2(total), credit: 0 },
     { accountId: "sales", debit: 0, credit: round2(netRevenue) },
@@ -789,11 +789,11 @@ export function receivePurchase(poId: string, batches?: SerialBatch[]) {
   for (const it of po.items) {
     adjustStock(it.warehouseId, it.itemId, it.qty);
   }
-  if (batches && batches.length) addSerialBatches(batches);
+  if (batches?.length) addSerialBatches(batches);
   // Mark received
   const next = all.map(p => (p.id === poId ? { ...p, status: "received" } : p));
   savePurchases(next);
-  // Post journal entry: Dr Inventory, Cr Cash
+  // Post-journal entry: Dr Inventory, Cr Cash
   try {
     const total = po.items.reduce((t, i) => t + i.cost * i.qty, 0);
     const settings = getSettings();

@@ -25,6 +25,7 @@ All data is stored locally in your browser (localStorage) for simplicity. No bac
   - Access rule: Cashiers must time in before using POS.
   - Inventory: stock-aware catalog that prevents overselling. Seeded with sample items.
   - Product visibility: disable a product in Inventory > Products to hide it from the POS catalog and barcode scanning.
+  - Catalog sorting: products are sorted by category name (uncategorized last).
   - Sales: add items to cart and checkout. Sales recorded with date, cashier, items, and total.
   - Receipts: each sale gets a receipt number and appears in a Recent Receipts list.
   - Customer data: optionally capture customer name at checkout and store it.
