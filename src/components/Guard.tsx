@@ -4,7 +4,10 @@ import { useAuth } from "@/context/AuthContext";
 import { hasPermission, type Permission } from "@/lib/rbac";
 import Link from "next/link";
 
-export function RequirePermission({ permission, children }: { permission: Permission; children: React.ReactNode }) {
+export function RequirePermission({ permission, children }: Readonly<{
+  permission: Permission;
+  children: React.ReactNode
+}>) {
   const { user } = useAuth();
   if (!user) {
     return (
@@ -17,7 +20,7 @@ export function RequirePermission({ permission, children }: { permission: Permis
   if (!hasPermission(user.role, permission)) {
     return (
       <div className="p-4 border rounded">
-        <p className="mb-2">Access denied. Your role "{user.role}" lacks permission: {permission}</p>
+        <p className="mb-2">Access denied. Your role &#34;{user.role}&#34; lacks permission: {permission}</p>
         <Link className="underline" href="/">Return Home</Link>
       </div>
     );

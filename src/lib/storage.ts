@@ -280,3 +280,43 @@ export function addAudit(entry: AuditEntry) {
   all.unshift(entry);
   saveAuditLogs(all);
 }
+
+
+// Users directory and RBAC config passthrough (for Admin management)
+
+const USERS_KEY = "cafe_users";
+
+export type UserRecord = {
+  id: string;
+  name: string;
+  role: Role;
+};
+
+export function getUsers(): UserRecord[] {
+  try {
+    const raw = localStorage.getItem(USERS_KEY);
+    return raw ? (JSON.parse(raw) as UserRecord[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveUsers(list: UserRecord[]) {
+  localStorage.setItem(USERS_KEY, JSON.stringify(list));
+}
+
+export function addUser(u: UserRecord) {
+  const all = getUsers();
+  all.unshift(u);
+  saveUsers(all);
+}
+
+export function updateUser(u: UserRecord) {
+  const all = getUsers().map(x => (x.id === u.id ? u : x));
+  saveUsers(all);
+}
+
+export function deleteUser(id: string) {
+  const all = getUsers().filter(x => x.id !== id);
+  saveUsers(all);
+}

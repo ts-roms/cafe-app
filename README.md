@@ -4,8 +4,8 @@ A minimal Next.js app that demonstrates:
 - POS (Point of Sale)
 - Accounting (sales ledger, invoicing, expenses, and simple financial reports) with CSV export
 - Time In/Out tracking with audit logs and shift scheduling
-- Role-Based Access Control (RBAC) with roles: admin, manager, cashier, staff
-- Admin: Settings (currency, tax rate) and Audit Logs viewer
+- Role-Based Access Control (RBAC) with admin-managed roles and permissions (defaults: admin, manager, cashier, staff)
+- Admin: Settings (currency, tax rate), Audit Logs viewer, Roles & Users management
 
 All data is stored locally in your browser (localStorage) for simplicity. No backend required.
 
@@ -42,12 +42,12 @@ All data is stored locally in your browser (localStorage) for simplicity. No bac
 
 ## RBAC
 
-Defined in src/lib/rbac.ts
-- admin: all permissions
-- cashier: pos:use, time:record
-- staff: time:record
+Defined in src/lib/rbac.ts and stored in localStorage.
+- Dynamic roles and permissions editable from Admin > Roles.
+- Defaults provided: admin, manager, cashier, staff with sensible permissions.
+- Admin can add/remove roles (except admin) and toggle permissions per role.
 
-Pages are protected with a client-side Guard component that checks permissions.
+Pages are protected with a client-side Guard component that checks permissions at runtime.
 
 ## Notes
 
