@@ -445,7 +445,7 @@ export default function AdminPage() {
               <h2 className="text-xl font-semibold">Promotions</h2>
               <div className="flex gap-2">
                 <button className="px-3 py-1 rounded border text-sm" onClick={() => {
-                  const p: Promo = { id: crypto.randomUUID(), code: "SAVE10", type: "percent", value: 10, minSubtotal: 0, active: true };
+                  const p: Promo = { id: crypto.randomUUID(), code: "SAVE10", type: "percent", value: 10, minSubtotal: 0, active: true, uses: 0 };
                   addPromo(p);
                   setPromos(cur => [p, ...cur]);
                   addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "promo:add", details: `${p.code} ${p.type} ${p.value}` });
@@ -470,6 +470,8 @@ export default function AdminPage() {
                       <th className="text-right p-2 border">Min Subtotal</th>
                       <th className="text-left p-2 border">Expires</th>
                       <th className="text-left p-2 border">Active</th>
+                      <th className="text-right p-2 border">Max Uses</th>
+                      <th className="text-right p-2 border">Uses</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -491,6 +493,17 @@ export default function AdminPage() {
                             <span>{p.active ? "Active" : "Inactive"}</span>
                           </label>
                         </td>
+                        <td className="p-2 border text-right">
+                          <input
+                            value={p.maxUses != null ? String(p.maxUses) : ""}
+                            onChange={e => setPromos(cur => cur.map((x,i)=> i===idx? { ...x, maxUses: (e.target.value.trim()==="" ? undefined : Math.max(0, parseInt(e.target.value)||0)) }: x))}
+                            className="border rounded px-2 py-1 bg-transparent w-24 text-right"
+                            inputMode="numeric"
+                            placeholder="∞"
+                            title="Maximum total uses (leave blank for unlimited)"
+                          />
+                        </td>
+                        <td className="p-2 border text-right">{p.uses || 0}</td>
                       </tr>
                     ))}
                   </tbody>
