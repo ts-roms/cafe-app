@@ -27,6 +27,7 @@ import {
   addHeldOrder,
   removeHeldOrder,
   type HeldOrder,
+  incrementPromoUsage,
 } from "@/lib/storage";
 
 export default function POSPage() {
@@ -136,10 +137,11 @@ export default function POSPage() {
   const promoDiscountAmt = useMemo(() => {
     const p = appliedPromo;
     if (!p) return 0;
-    // validate active, expiry, and min subtotal
+    // validate active, expiry, min subtotal, and usage limits
     const now = Date.now();
     if (!p.active) return 0;
     if (p.expiresAt && new Date(p.expiresAt).getTime() < now) return 0;
+    if (p.maxUses != null && (p.uses || 0) >= p.maxUses) return 0;
     const baseBeforeTax = Math.max(0, subtotal - discountAmt);
     // Use subtotal for minSubtotal qualification since requirement mentions subtotal basis
     if ((p.minSubtotal || 0) > subtotal) return 0;
@@ -251,6 +253,15 @@ export default function POSPage() {
     if (!user) return;
     if (items.length === 0) return alert("Cart is empty");
 
+    // If promo applied, re-validate usage and other constraints before checkout
+    if (appliedPromo) {
+      const now = Date.now();
+      if (!appliedPromo.active) { alert("Promo is not active"); return; }
+      if (appliedPromo.expiresAt && new Date(appliedPromo.expiresAt).getTime() < now) { alert("Promo has expired"); return; }
+      if (appliedPromo.minSubtotal && appliedPromo.minSubtotal > subtotal) { alert(`Promo requires minimum subtotal of $${appliedPromo.minSubtotal.toFixed(2)}`); return; }
+      if (appliedPromo.maxUses != null && (appliedPromo.uses || 0) >= appliedPromo.maxUses) { alert("Promo usage limit reached"); return; }
+    }
+
     // Validate payment details
     let cashTenderedNum: number | undefined = undefined;
     let changeNum: number | undefined = undefined;
@@ -307,6 +318,12 @@ export default function POSPage() {
     const updatedInv = adjustInventoryForSale(items);
     setInventory(updatedInv);
     setRecent((cur) => [sale, ...cur].slice(0, 5));
+
+    // Persist promo usage increment after successful sale
+    if (appliedPromo) {
+      try { incrementPromoUsage(appliedPromo.id); } catch {}
+    }
+
     clear();
     setAppliedPromoId("");
     setPromoInput("");
@@ -434,8 +451,11 @@ export default function POSPage() {
                         const min = p.minSubtotal || 0;
                         // Use subtotal basis for qualification
                         if (min > subtotal) { alert(`Promo requires minimum subtotal of $${min.toFixed(2)}`); return; }
+                        // Usage limit validation
+                        if (p.maxUses != null && (p.uses || 0) >= p.maxUses) { alert("Promo usage limit reached"); return; }
                         setAppliedPromoId(p.id);
-                        alert(`Applied promo ${p.code}`);
+                        const remaining = p.maxUses != null ? (p.maxUses - ((p.uses || 0) + 1)) : undefined;
+                        alert(`Applied promo ${p.code}${remaining != null ? ` (remaining after this: ${Math.max(0, remaining)})` : ""}`);
                       }}>Apply</button>
                     )}
                   </div>

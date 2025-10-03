@@ -555,6 +555,9 @@ export type Promo = {
   minSubtotal?: number; // optional: minimum subtotal to qualify (before discounts)
   active: boolean;
   expiresAt?: string; // ISO date-only or ISO datetime; if set and in past, not valid
+  // Usage limiting: optional maximum uses and current usage counter
+  maxUses?: number; // if set, promo can only be used this many times in total
+  uses?: number; // number of times this promo has been used (persisted)
 };
 
 export function getPromos(): Promo[] {
@@ -578,6 +581,16 @@ export function addPromo(p: Promo) {
 
 export function updatePromo(p: Promo) {
   const all = getPromos().map(x => (x.id === p.id ? p : x));
+  savePromos(all);
+}
+
+export function incrementPromoUsage(id: string) {
+  const all = getPromos();
+  const idx = all.findIndex(p => p.id === id);
+  if (idx === -1) return;
+  const promo = all[idx];
+  const nextUses = (promo.uses || 0) + 1;
+  all[idx] = { ...promo, uses: nextUses };
   savePromos(all);
 }
 
