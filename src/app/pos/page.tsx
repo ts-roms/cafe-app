@@ -331,6 +331,12 @@ export default function POSPage() {
     setPaymentRef("");
     alert(`Sale recorded. Receipt: ${receiptNo}`);
   };
+  useEffect(() => {
+    if (subtotal <= 0 && appliedPromoId) {
+      setAppliedPromoId("");
+      setPromoInput("");
+    }
+  }, [subtotal, appliedPromoId]);
   console.info({ appliedPromo })
   return (
     <RequirePermission permission="pos:use">
@@ -441,7 +447,8 @@ export default function POSPage() {
                     {appliedPromo ? (
                       <button type="button" className="px-3 py-2 rounded border" onClick={() => { setAppliedPromoId(""); setPromoInput(""); }}>Remove</button>
                     ) : (
-                      <button type="button" className="px-3 py-2 rounded border" onClick={() => {
+                      <button type="button" className="px-3 py-2 rounded border" disabled={items.length === 0} onClick={() => {
+                        if (subtotal <= 0) { alert("Add items to cart before applying a promo"); return; }
                         const p = (promos || []).find(x => x.code.toLowerCase() === (promoInput||"").trim().toLowerCase());
                         if (!p) { alert("Promo not found"); return; }
                         // Validate promo before applying
