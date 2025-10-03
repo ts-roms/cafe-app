@@ -141,10 +141,15 @@ export default function POSPage() {
     if (!p.active) return 0;
     if (p.expiresAt && new Date(p.expiresAt).getTime() < now) return 0;
     const baseBeforeTax = Math.max(0, subtotal - discountAmt);
-    if ((p.minSubtotal || 0) > baseBeforeTax) return 0;
+    // Use subtotal for minSubtotal qualification since requirement mentions subtotal basis
+    if ((p.minSubtotal || 0) > subtotal) return 0;
     let val = 0;
-    if (p.type === "percent") val = (baseBeforeTax * (p.value || 0)) / 100;
-    else val = p.value || 0;
+    if (p.type === "percent") {
+      // Apply percent off the subtotal, then cap by remaining base (after manual discount)
+      val = (subtotal * (p.value || 0)) / 100;
+    } else {
+      val = p.value || 0;
+    }
     val = Math.min(val, baseBeforeTax);
     return parseFloat(val.toFixed(2));
   }, [appliedPromo, subtotal, discountAmt]);
@@ -309,7 +314,7 @@ export default function POSPage() {
     setPaymentRef("");
     alert(`Sale recorded. Receipt: ${receiptNo}`);
   };
-
+  console.info({ appliedPromo })
   return (
     <RequirePermission permission="pos:use">
       {user && (user.role === "cashier" || user.role === "staff") && hasOpenTimeLog === false ? (
@@ -422,6 +427,13 @@ export default function POSPage() {
                       <button type="button" className="px-3 py-2 rounded border" onClick={() => {
                         const p = (promos || []).find(x => x.code.toLowerCase() === (promoInput||"").trim().toLowerCase());
                         if (!p) { alert("Promo not found"); return; }
+                        // Validate promo before applying
+                        const now = Date.now();
+                        if (!p.active) { alert("Promo is not active"); return; }
+                        if (p.expiresAt && new Date(p.expiresAt).getTime() < now) { alert("Promo has expired"); return; }
+                        const min = p.minSubtotal || 0;
+                        // Use subtotal basis for qualification
+                        if (min > subtotal) { alert(`Promo requires minimum subtotal of $${min.toFixed(2)}`); return; }
                         setAppliedPromoId(p.id);
                         alert(`Applied promo ${p.code}`);
                       }}>Apply</button>
@@ -471,6 +483,22 @@ export default function POSPage() {
                     />
                   </div>
                 )}
+              </div>
+              {discountAmt > 0 && (
+                <div className="flex items-center justify-between">
+                  <div className="text-sm opacity-80">Discount</div>
+                  <div className="text-sm">-${discountAmt.toFixed(2)}</div>
+                </div>
+              )}
+              {promoDiscountAmt > 0 && (
+                <div className="flex items-center justify-between">
+                  <div className="text-sm opacity-80">Promo {appliedPromo?.code ? `(${appliedPromo.code})` : ""}</div>
+                  <div className="text-sm">-${promoDiscountAmt.toFixed(2)}</div>
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <div className="text-sm opacity-80">Subtotal after discounts</div>
+                <div className="text-sm">${Math.max(0, subtotal - discountAmt - promoDiscountAmt).toFixed(2)}</div>
               </div>
               <div className="flex items-center justify-between">
                 <div className="text-sm opacity-80">Tax ({taxRate}%)</div>
