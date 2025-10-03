@@ -1,4 +1,4 @@
-import { getRBACConfig, saveRBACConfig, hasPermission, ALL_PERMISSIONS } from '@/lib/rbac';
+import { getRBACConfig, saveRBACConfig, hasPermission } from '@/lib/rbac';
 
 describe('RBAC', () => {
   beforeEach(() => {
@@ -13,7 +13,8 @@ describe('RBAC', () => {
   });
 
   it('admin has all permissions via admin:all', () => {
-    for (const p of ALL_PERMISSIONS) {
+    const cfg = getRBACConfig();
+    for (const p of cfg.permissions) {
       expect(hasPermission('admin', p)).toBe(true);
     }
   });

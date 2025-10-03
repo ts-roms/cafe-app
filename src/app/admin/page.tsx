@@ -24,7 +24,7 @@ import {
   updatePromo,
   type Promo,
 } from "@/lib/storage";
-import { ALL_PERMISSIONS, getRBACConfig, saveRBACConfig, type RBACConfig } from "@/lib/rbac";
+import { getRBACConfig, saveRBACConfig, type RBACConfig } from "@/lib/rbac";
 
 export default function AdminPage() {
   const { user } = useAuth();
@@ -57,6 +57,7 @@ export default function AdminPage() {
   // roles/permissions (RBAC)
   const [rbac, setRbac] = useState<RBACConfig>(getRBACConfig());
   const [newRole, setNewRole] = useState("");
+  const [newPerm, setNewPerm] = useState("");
 
   // calendar state
   const [calYear, setCalYear] = useState<number>(new Date().getFullYear());
@@ -100,7 +101,7 @@ export default function AdminPage() {
     const current = new Set(rbac.roles[role] || []);
     if (current.has(perm)) current.delete(perm);
     else current.add(perm);
-    const next: RBACConfig = { roles: { ...rbac.roles, [role]: Array.from(current) } };
+    const next: RBACConfig = { roles: { ...rbac.roles, [role]: Array.from(current) }, permissions: rbac.permissions } as RBACConfig;
     setRbac(next);
     saveRBACConfig(next);
     addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "rbac:toggle", details: `${role} ${perm}` });
@@ -111,18 +112,30 @@ export default function AdminPage() {
     const name = newRole.trim();
     if (!name) return;
     if (rbac.roles[name]) return alert("Role already exists");
-    const next: RBACConfig = { roles: { ...rbac.roles, [name]: [] } };
+    const next: RBACConfig = { roles: { ...rbac.roles, [name]: [] }, permissions: rbac.permissions } as RBACConfig;
     setRbac(next);
     saveRBACConfig(next);
     addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "rbac:role:add", details: name });
     setNewRole("");
   };
 
+  const createPermission = (e: React.FormEvent) => {
+    e.preventDefault();
+    const perm = newPerm.trim();
+    if (!perm) return;
+    if (rbac.permissions.includes(perm)) return alert("Permission already exists");
+    const next: RBACConfig = { roles: { ...rbac.roles }, permissions: [...rbac.permissions, perm] } as RBACConfig;
+    setRbac(next);
+    saveRBACConfig(next);
+    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "rbac:permission:add", details: perm });
+    setNewPerm("");
+  };
+
   const deleteRole = (role: string) => {
     if (role === "admin") return alert("Cannot delete admin role");
     if (userCountByRole[role]) return alert("Cannot delete role in use by users");
     const { [role]: _, ...rest } = rbac.roles;
-    const next: RBACConfig = { roles: { ...rest } };
+    const next: RBACConfig = { roles: { ...rest }, permissions: rbac.permissions } as RBACConfig;
     setRbac(next);
     saveRBACConfig(next);
     addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "rbac:role:delete", details: role });
@@ -217,12 +230,18 @@ export default function AdminPage() {
 
         {tab === "roles" && (
           <section className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
               <h2 className="text-xl font-semibold">Roles & Permissions</h2>
-              <form onSubmit={createRole} className="flex gap-2">
-                <input value={newRole} onChange={(e) => setNewRole(e.target.value)} className="border rounded px-3 py-1 bg-transparent" placeholder="New role name" />
-                <button className="px-3 py-1 border rounded">Add Role</button>
-              </form>
+              <div className="flex gap-3 flex-wrap">
+                <form onSubmit={createRole} className="flex gap-2">
+                  <input value={newRole} onChange={(e) => setNewRole(e.target.value)} className="border rounded px-3 py-1 bg-transparent" placeholder="New role name" />
+                  <button className="px-3 py-1 border rounded">Add Role</button>
+                </form>
+                <form onSubmit={createPermission} className="flex gap-2">
+                  <input value={newPerm} onChange={(e) => setNewPerm(e.target.value)} className="border rounded px-3 py-1 bg-transparent" placeholder="New permission (e.g., orders:approve)" />
+                  <button className="px-3 py-1 border rounded">Add Permission</button>
+                </form>
+              </div>
             </div>
             {roleNames.length === 0 ? (
               <p className="opacity-70">No roles defined.</p>
@@ -237,7 +256,7 @@ export default function AdminPage() {
                       )}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {ALL_PERMISSIONS.map((p) => (
+                      {(rbac.permissions || []).map((p) => (
                         <label key={p} className="text-sm flex items-center gap-1 border rounded px-2 py-1">
                           <input
                             type="checkbox"
