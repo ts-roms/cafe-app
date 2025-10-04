@@ -75,6 +75,10 @@ export default function AdminPage() {
   const save = (e: React.FormEvent) => {
     e.preventDefault();
     saveSettings(settings);
+    try {
+      // Mirror kioskEnabled into a cookie so middleware can enforce /kiosk access at route-level
+      document.cookie = `kioskEnabled=${settings.kioskEnabled ? "1" : "0"}; Path=/; Max-Age=31536000`;
+    } catch {}
     addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "settings:update", details: JSON.stringify({ companyName: settings.companyName, currency: settings.currency, taxRate: settings.taxRate, kioskEnabled: settings.kioskEnabled }) });
     alert("Settings saved");
   };
