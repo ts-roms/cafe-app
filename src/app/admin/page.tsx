@@ -75,7 +75,7 @@ export default function AdminPage() {
   const save = (e: React.FormEvent) => {
     e.preventDefault();
     saveSettings(settings);
-    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "settings:update", details: JSON.stringify({ currency: settings.currency, taxRate: settings.taxRate }) });
+    addAudit({ id: crypto.randomUUID(), at: new Date().toISOString(), user: user ? { id: user.id, name: user.name } : undefined, action: "settings:update", details: JSON.stringify({ companyName: settings.companyName, currency: settings.currency, taxRate: settings.taxRate, kioskEnabled: settings.kioskEnabled }) });
     alert("Settings saved");
   };
 
@@ -222,6 +222,10 @@ export default function AdminPage() {
               <input value={settings.companyName} onChange={(e) => setSettings({ ...settings, companyName: e.target.value })} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" placeholder="Company Name" />
               <input value={settings.currency} onChange={(e) => setSettings({ ...settings, currency: e.target.value })} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" placeholder="Currency (e.g., USD)" />
               <input value={settings.taxRate} onChange={(e) => setSettings({ ...settings, taxRate: Number(e.target.value) || 0 })} className="border rounded px-3 py-2 bg-transparent sm:col-span-1" placeholder="Tax Rate %" inputMode="decimal" />
+              <label className="sm:col-span-3 flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={!!settings.kioskEnabled} onChange={(e) => setSettings({ ...settings, kioskEnabled: !!e.target.checked })} />
+                <span>Enable Time Kiosk (/kiosk)</span>
+              </label>
               <button className="px-4 py-2 rounded bg-foreground text-background sm:col-span-3">Save</button>
             </form>
             <p className="text-xs opacity-70">Tax rate applies by default in POS; you can still apply per-order discounts there.</p>

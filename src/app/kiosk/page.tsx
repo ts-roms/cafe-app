@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
-import { getUsers, getTimeLogs, saveTimeLogs, addAudit, getShifts, type UserRecord, type TimeLog, type Shift } from "@/lib/storage";
+import { getUsers, getTimeLogs, saveTimeLogs, addAudit, getShifts, getSettings, type UserRecord, type TimeLog, type Shift, type Settings } from "@/lib/storage";
 
 function ymd(date: Date): string { return date.toISOString().slice(0,10); }
 function hhmmToMinutes(hhmm: string): number { const m = /^(\d{2}):(\d{2})$/.exec(hhmm || ""); if (!m) return 0; return parseInt(m[1])*60 + parseInt(m[2]); }
@@ -13,11 +13,15 @@ export default function KioskPage() {
   const [lastMsg, setLastMsg] = useState<string>("");
   const [recentForUser, setRecentForUser] = useState<TimeLog[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [settings, setSettings] = useState<Settings>(getSettings());
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     setDir(getUsers());
     setLogs(getTimeLogs());
     setShifts(getShifts());
+    setSettings(getSettings());
+    setReady(true);
   }, []);
 
   const submit = (e: React.FormEvent) => {
@@ -92,6 +96,29 @@ export default function KioskPage() {
     }
     setCode("");
   };
+
+  if (!ready) {
+    return (
+      <div className="max-w-md mx-auto space-y-4">
+        <h1 className="text-2xl font-semibold">Time Kiosk</h1>
+        <div className="p-4 border rounded">
+          <p className="text-sm">Loading kiosk…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!settings.kioskEnabled) {
+    return (
+      <div className="max-w-md mx-auto space-y-4">
+        <h1 className="text-2xl font-semibold">Time Kiosk</h1>
+        <div className="p-4 border rounded">
+          <p className="text-sm">The Time Kiosk is currently disabled by the administrator.</p>
+          <p className="text-xs opacity-70 mt-1">Please contact your admin if you believe this is a mistake.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-md mx-auto space-y-4">

@@ -496,18 +496,22 @@ export type Settings = {
   companyName: string;
   currency: string; // e.g., USD
   taxRate: number; // percent, e.g., 12 means 12%
+  kioskEnabled: boolean; // controls /kiosk availability
 };
 
 const DEFAULT_SETTINGS: Settings = {
   companyName: "My Cafe",
   currency: "USD",
   taxRate: 0,
+  kioskEnabled: true,
 };
 
 export function getSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    return raw ? (JSON.parse(raw) as Settings) : { ...DEFAULT_SETTINGS };
+    const parsed = raw ? (JSON.parse(raw) as Partial<Settings>) : {};
+    // Backfill any new defaults for backward compatibility
+    return { ...DEFAULT_SETTINGS, ...parsed } as Settings;
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
